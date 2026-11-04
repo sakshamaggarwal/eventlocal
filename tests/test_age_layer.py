@@ -1,77 +1,94 @@
-"""
-Tests for the age personalization layer.
-"""
-import sys
-import os
+"""Tests for age personalization layer."""
+from __future__ import annotations
 
-# Add project root to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from agents.layers.age_layer import score_event, apply_age_scores
+import pytest
+from agents.layers.age_layer import apply_age_scores, score_event
 from models.user_profile import AgeBracket, Event, UserProfile
 
 
-def _make_event(title: str, tags: list[str] | None = None) -> Event:
-    return Event(
-        id="test-1",
-        title=title,
-        source="test",
-        tags=tags or [],
-    )
+def _make_event(**kwargs) -> Event:
+    defaults = dict(id="test-1", title="Test Event", source="test")
+    defaults.update(kwargs)
+    return Event(**defaults)
 
 
-def test_twenties_boost_nightclub():
-    event = _make_event("Friday Nightclub Rooftop Party", ["nightclub", "rooftop"])
-    profile = UserProfile(age=25)
-    score = score_event(event, profile)
-    assert score > 0.5, f"Nightclub should boost for 25yo, got {score}"
+class TestScoreEvent:
+    def test_neutral_baseline(self):
+        event = _make_event(title="Generic community event")
+        profile = UserProfile(age=25)
+        score = score_event(event, profile)
+        assert score == 0.5
+
+    def test_boost_keywords_increase_score(self):
+        event = _make_event(
+            title="Rooftop Happy Hour with EDM",
+            tags=["nightclub", "rooftop", "happy-hour"],
+        )
+        profile = UserProfile(age=25)
+        score = score_event(event, profile)
+        assert score > 0.5
+
+    def test_penalize_keywords_decrease_score(self):
+        event = _make_event(
+            title="Senior retirement community meetup",
+            tags=["senior", "retirement"],
+        )
+        profile = UserProfile(age=25)
+        score = score_event(event, profile)
+        assert score < 0.5
+
+    def test_under_21_boosts_gaming(self):
+        event = _make_event(title="Esports gaming tournament", tags=["gaming", "esports", "all-ages"])
+        profile = UserProfile(age=18)
+        score = score_event(event, profile)
+        assert score >= 0.7
+
+    def test_fifties_plus_boosts_classical(self):
+        event = _make_event(title="Classical music at the opera house", tags=["classical", "opera"])
+        profile = UserProfile(age=55)
+        score = score_event(event, profile)
+        assert score >= 0.7
+
+    def test_score_clamped_between_0_and_1(self):
+        event = _make_event(
+            title="all-ages teen anime gaming esports boba college fun",
+            tags=["all-ages", "teen", "anime", "gaming", "esports", "boba", "college"],
+        )
+        profile = UserProfile(age=18)
+        score = score_event(event, profile)
+        assert 0.0 <= score <= 1.0
 
 
-def test_twenties_penalize_senior():
-    event = _make_event("Senior Retirement Celebration")
-    profile = UserProfile(age=25)
-    score = score_event(event, profile)
-    assert score < 0.5, f"Senior event should penalize for 25yo, got {score}"
+class TestApplyAgeScores:
+    def test_sorts_by_score_descending(self):
+        events = [
+            _make_event(id="low", title="Wine tasting gala"),
+            _make_event(id="high", title="Tech meetup rooftop happy-hour"),
+        ]
+        profile = UserProfile(age=25)
+        scored = apply_age_scores(events, profile)
+        assert scored[0].age_score >= scored[-1].age_score
+
+    def test_all_events_scored(self):
+        events = [_make_event(id=f"e-{i}", title=f"Event {i}") for i in range(5)]
+        profile = UserProfile(age=30)
+        scored = apply_age_scores(events, profile)
+        assert len(scored) == 5
+        assert all(e.age_score > 0 for e in scored)
 
 
-def test_fifties_boost_jazz():
-    event = _make_event("Jazz Night at Blue Note", ["jazz", "live-music"])
-    profile = UserProfile(age=55)
-    score = score_event(event, profile)
-    assert score > 0.5, f"Jazz should boost for 55yo, got {score}"
-
-
-def test_under_21_penalize_cocktail():
-    event = _make_event("Cocktail Lounge Evening", ["cocktail-lounge"])
-    profile = UserProfile(age=19)
-    score = score_event(event, profile)
-    assert score <= 0.5, f"Cocktail lounge should not boost for 19yo, got {score}"
-
-
-def test_apply_scores_sorts_descending():
-    events = [
-        _make_event("Senior Bingo"),
-        _make_event("EDM Nightclub Rave", ["nightclub", "edm", "rave"]),
-        _make_event("Happy Hour Rooftop", ["happy-hour", "rooftop"]),
-    ]
-    profile = UserProfile(age=25)
-    scored = apply_age_scores(events, profile)
-    assert scored[0].age_score >= scored[-1].age_score
-
-
-def test_age_bracket_mapping():
-    assert AgeBracket.from_age(18) == AgeBracket.UNDER_21
-    assert AgeBracket.from_age(25) == AgeBracket.TWENTIES
-    assert AgeBracket.from_age(35) == AgeBracket.THIRTIES
-    assert AgeBracket.from_age(45) == AgeBracket.FORTIES
-    assert AgeBracket.from_age(60) == AgeBracket.FIFTIES_PLUS
-
-
-if __name__ == "__main__":
-    test_twenties_boost_nightclub()
-    test_twenties_penalize_senior()
-    test_fifties_boost_jazz()
-    test_under_21_penalize_cocktail()
-    test_apply_scores_sorts_descending()
-    test_age_bracket_mapping()
-    print("All tests passed!")
+class TestAgeBracket:
+    @pytest.mark.parametrize("age,expected", [
+        (15, AgeBracket.UNDER_21),
+        (20, AgeBracket.UNDER_21),
+        (21, AgeBracket.TWENTIES),
+        (29, AgeBracket.TWENTIES),
+        (30, AgeBracket.THIRTIES),
+        (39, AgeBracket.THIRTIES),
+        (40, AgeBracket.FORTIES),
+        (49, AgeBracket.FORTIES),
+        (50, AgeBracket.FIFTIES_PLUS),
+        (75, AgeBracket.FIFTIES_PLUS),
+    ])
+    def test_age_to_bracket(self, age, expected):
+        assert AgeBracket.from_age(age) == expected
