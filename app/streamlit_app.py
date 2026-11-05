@@ -1,5 +1,5 @@
 """
-eventlocal — Streamlit demo UI (Hackathon MVP).
+eventlocal — Streamlit UI (Hackathon MVP).
 
 Run: streamlit run app/streamlit_app.py
 """
@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import streamlit as st
 
-# Ensure event loop works with Streamlit
 try:
     loop = asyncio.get_event_loop()
 except RuntimeError:
@@ -16,11 +15,12 @@ except RuntimeError:
     asyncio.set_event_loop(loop)
 
 from agents.master_agent import discover_events
+from app.config import settings
 from models.user_profile import UserProfile
-
+from sources.sample_data import get_sample_events
 
 # ---------------------------------------------------------------------------
-# Page config
+# Page config & custom CSS
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
@@ -29,23 +29,268 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown("""
+<style>
+    /* Dark theme overrides */
+    .stApp { background-color: #0e1117; }
+
+    /* Hero section */
+    .hero-title {
+        font-size: 2.8rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0;
+        line-height: 1.2;
+    }
+    .hero-subtitle {
+        font-size: 1.2rem;
+        color: #9ca3af;
+        margin-top: 0.5rem;
+    }
+
+    /* Category chip styling */
+    .chip-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 1rem 0;
+    }
+    .chip {
+        display: inline-block;
+        padding: 0.4rem 1rem;
+        border-radius: 2rem;
+        background: #1e2130;
+        border: 1px solid #374151;
+        color: #d1d5db;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .chip.active {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-color: #667eea;
+        color: white;
+    }
+
+    /* Event card styling */
+    .event-card {
+        background: #1a1d2e;
+        border: 1px solid #2d3148;
+        border-radius: 12px;
+        padding: 1.2rem;
+        margin-bottom: 1rem;
+        transition: transform 0.2s;
+    }
+    .event-card:hover { transform: translateY(-2px); }
+    .event-title { font-size: 1.05rem; font-weight: 600; color: #e5e7eb; margin-bottom: 0.3rem; }
+    .event-venue { font-size: 0.85rem; color: #9ca3af; }
+    .event-meta { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.8rem; color: #6b7280; }
+    .score-badge {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 1rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .score-high { background: #065f46; color: #6ee7b7; }
+    .score-mid { background: #78350f; color: #fcd34d; }
+    .score-low { background: #7f1d1d; color: #fca5a5; }
+
+    /* Step cards */
+    .step-card {
+        background: #1a1d2e;
+        border: 1px solid #2d3148;
+        border-radius: 12px;
+        padding: 1.5rem;
+        text-align: center;
+        height: 100%;
+    }
+    .step-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .step-label { font-size: 0.75rem; color: #667eea; text-transform: uppercase; letter-spacing: 0.1em; }
+    .step-title { font-size: 1.1rem; font-weight: 600; color: #e5e7eb; margin: 0.3rem 0; }
+    .step-desc { font-size: 0.85rem; color: #9ca3af; }
+
+    /* Status indicator */
+    .status-bar {
+        display: flex;
+        gap: 1.5rem;
+        padding: 0.8rem 1.2rem;
+        background: #1a1d2e;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        font-size: 0.8rem;
+        color: #9ca3af;
+    }
+    .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 0.4rem;
+    }
+    .dot-green { background: #10b981; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-red { background: #ef4444; }
+
+    /* Comparison table */
+    .comparison-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+    }
+    .comparison-table th {
+        background: #1a1d2e;
+        padding: 0.8rem 1rem;
+        text-align: left;
+        font-weight: 600;
+        color: #e5e7eb;
+        border-bottom: 2px solid #667eea;
+    }
+    .comparison-table td {
+        padding: 0.7rem 1rem;
+        border-bottom: 1px solid #2d3148;
+        color: #d1d5db;
+    }
+    .comparison-table tr:hover td { background: #1a1d2e; }
+
+    /* Demo mode banner */
+    .demo-banner {
+        background: linear-gradient(135deg, #1e3a5f 0%, #2d1b69 100%);
+        border: 1px solid #374191;
+        border-radius: 8px;
+        padding: 0.8rem 1.2rem;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+        color: #93c5fd;
+    }
+
+    /* Graph placeholder */
+    .graph-container {
+        background: #1a1d2e;
+        border: 1px solid #2d3148;
+        border-radius: 12px;
+        padding: 2rem;
+        text-align: center;
+        min-height: 300px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Footer */
+    .footer {
+        text-align: center;
+        padding: 2rem 0;
+        color: #6b7280;
+        font-size: 0.85rem;
+        border-top: 1px solid #2d3148;
+        margin-top: 3rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
 # ---------------------------------------------------------------------------
-# Header
+# Helper functions
 # ---------------------------------------------------------------------------
 
-st.title("🎉 eventlocal")
+def _score_class(score: float) -> str:
+    if score >= 0.7:
+        return "score-high"
+    if score >= 0.4:
+        return "score-mid"
+    return "score-low"
+
+
+def _is_demo_mode() -> bool:
+    return not bool(settings.groq_api_key)
+
+
+def _system_status() -> str:
+    llm_ok = bool(settings.groq_api_key)
+    luma_ok = bool(settings.luma_api_key)
+    eb_ok = bool(settings.eventbrite_api_key)
+    gp_ok = bool(settings.google_places_api_key)
+
+    def _dot(ok: bool) -> str:
+        return '<span class="status-dot dot-green"></span>' if ok else '<span class="status-dot dot-yellow"></span>'
+
+    return (
+        f'<div class="status-bar">'
+        f'<span>{_dot(llm_ok)} LLM (Qwen3-32B): {"Live" if llm_ok else "Demo"}</span>'
+        f'<span>{_dot(luma_ok)} Luma: {"Connected" if luma_ok else "Sample data"}</span>'
+        f'<span>{_dot(eb_ok)} Eventbrite: {"Connected" if eb_ok else "Sample data"}</span>'
+        f'<span>{_dot(gp_ok)} Google Places: {"Connected" if gp_ok else "Sample data"}</span>'
+        f'</div>'
+    )
+
+
+CATEGORIES = [
+    ("All Events", None),
+    ("Nightlife", ["nightclub", "dance", "rave", "edm"]),
+    ("Live Music", ["live-music", "jazz", "concert"]),
+    ("Tech Meetup", ["tech-meetup", "startup", "hackathon"]),
+    ("Comedy", ["comedy"]),
+    ("Food & Drink", ["food-festival", "gastropub", "fine-dining", "craft-beer", "wine-tasting"]),
+    ("Art & Culture", ["art", "gallery", "museum", "opera", "classical"]),
+    ("Networking", ["networking", "happy-hour"]),
+    ("Rooftop", ["rooftop"]),
+    ("Gaming", ["gaming", "esports"]),
+]
+
+
+# ---------------------------------------------------------------------------
+# Session state init
+# ---------------------------------------------------------------------------
+
+if "plan" not in st.session_state:
+    st.session_state.plan = None
+if "scored_events" not in st.session_state:
+    st.session_state.scored_events = None
+if "saved_plans" not in st.session_state:
+    st.session_state.saved_plans = []
+if "active_category" not in st.session_state:
+    st.session_state.active_category = "All Events"
+if "show_graph" not in st.session_state:
+    st.session_state.show_graph = False
+
+
+# ---------------------------------------------------------------------------
+# Hero header
+# ---------------------------------------------------------------------------
+
+st.markdown('<p class="hero-title">🎉 eventlocal</p>', unsafe_allow_html=True)
 st.markdown(
-    "**Your city's Event Brain** — personalized evening plans "
-    "powered by a knowledge graph + AI"
+    '<p class="hero-subtitle">'
+    'Your city knows what\'s happening tonight. '
+    'AI-powered event discovery that understands your vibe.'
+    '</p>',
+    unsafe_allow_html=True,
 )
-st.divider()
+
+# System status bar
+st.markdown(_system_status(), unsafe_allow_html=True)
+
+# Demo mode banner
+if _is_demo_mode():
+    st.markdown(
+        '<div class="demo-banner">'
+        '🧪 <strong>Demo Mode</strong> — Running with sample Bay Area events and template-based plans. '
+        'Set API keys in your environment to unlock live data and AI-generated itineraries.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
 
 # ---------------------------------------------------------------------------
-# Sidebar — User Profile (Age Slider = MVP personalization)
+# Sidebar — Profile controls
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.header("👤 Your Profile")
+    st.header("Your Profile")
 
     age = st.slider(
         "Your Age",
@@ -55,10 +300,9 @@ with st.sidebar:
         help="We personalize events to your age bracket",
     )
 
-    # Show which bracket they fall into
     bracket_labels = {
         range(0, 21): "🎮 Under 21 — All-ages events, gaming, cafes",
-        range(21, 30): "🍸 Twenties — Nightlife, rooftops, tech meetups",
+        range(21, 30): "🍸 Twenties — Nightlife, rooftops, meetups",
         range(30, 40): "🍷 Thirties — Cocktail bars, live music, comedy",
         range(40, 50): "🎭 Forties — Jazz, theater, wine, fine dining",
         range(50, 101): "🎵 50+ — Classical, opera, cultural events",
@@ -70,77 +314,238 @@ with st.sidebar:
 
     st.divider()
 
-    city = st.selectbox(
-        "City",
-        ["bay-area", "seattle"],
-        index=0,
+    social_mode = st.radio(
+        "Going out...",
+        ["Solo", "Group", "Date"],
+        horizontal=True,
+        help="Adjusts venue recommendations",
     )
 
+    st.divider()
+
+    city = st.selectbox("City", ["bay-area"], index=0)
     date = st.date_input("Date")
     date_str = date.isoformat() if date else "today"
 
     st.divider()
-    st.caption("🧠 Powered by Cognee + Qwen3-32B")
+    st.caption("Powered by Cognee + Qwen3-32B")
     st.caption("Built for Company Brain Hackathon 2026")
 
+    if st.button("🧠 Knowledge Graph View"):
+        st.session_state.show_graph = not st.session_state.show_graph
+
 
 # ---------------------------------------------------------------------------
-# Main — Discover Events
+# Category chips
 # ---------------------------------------------------------------------------
 
-col1, col2 = st.columns([2, 1])
+cols = st.columns(len(CATEGORIES))
+for i, (label, _tags) in enumerate(CATEGORIES):
+    with cols[i]:
+        if st.button(label, key=f"cat_{i}", use_container_width=True):
+            st.session_state.active_category = label
 
-with col1:
-    if st.button("🔍 Discover My Evening", type="primary", use_container_width=True):
-        profile = UserProfile(age=age)
 
-        with st.spinner("🧠 Building your personalized plan..."):
-            # Progress indicators
-            progress = st.progress(0)
-            status = st.empty()
+# ---------------------------------------------------------------------------
+# Discover button
+# ---------------------------------------------------------------------------
 
-            status.text("📡 Fetching events from all sources...")
-            progress.progress(20)
+if st.button("🔍 Discover My Evening", type="primary", use_container_width=True):
+    profile = UserProfile(age=age, social_mode=social_mode.lower())
 
-            try:
-                plan = asyncio.run(
-                    discover_events(profile=profile, date=date_str, city=city)
+    with st.spinner("Building your personalized plan..."):
+        try:
+            plan = asyncio.run(
+                discover_events(profile=profile, date=date_str, city=city)
+            )
+            st.session_state.plan = plan
+            st.session_state.scored_events = plan.events
+        except Exception as exc:
+            st.error(f"Something went wrong: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Main content area
+# ---------------------------------------------------------------------------
+
+if st.session_state.show_graph:
+    # Knowledge graph visualization
+    st.markdown("### Knowledge Graph")
+    st.markdown(
+        '<div class="graph-container">'
+        '<div class="step-icon">🧠</div>'
+        '<p style="color: #9ca3af; font-size: 1.1rem;">Event Knowledge Graph</p>'
+        '<p style="color: #6b7280; font-size: 0.85rem;">'
+        'The knowledge graph connects events, venues, reviews, and patterns.<br>'
+        'Cognee builds relationships using GraphRAG — enabling multi-hop queries<br>'
+        'like "jazz venues near Italian restaurants with good late-night vibes."'
+        '</p>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Show graph stats
+    sample_events = get_sample_events()
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Events Indexed", len(sample_events))
+    col2.metric("Entity Types", "4")
+    col3.metric("Relationships", "15")
+    col4.metric("Query Templates", "6")
+
+    st.markdown("**Entity Types:** Event, Venue, Review, Pattern")
+    st.markdown("**Relationships:** HOSTED_AT, NEAR_TO, REVIEWED_BY, SIMILAR_VIBE, SAME_NEIGHBORHOOD, ...")
+    st.markdown("**Multi-hop Queries:** age_personalized, solo_friendly, date_night, group_outing, hidden_gems, neighborhood_crawl")
+
+else:
+    # --- Scored events section ---
+    events_to_show = st.session_state.scored_events
+    if events_to_show is None:
+        from agents.layers.age_layer import apply_age_scores
+        preview_profile = UserProfile(age=age)
+        preview_events = get_sample_events(city, date_str)
+        events_to_show = apply_age_scores(preview_events, preview_profile)
+
+    # Filter by category
+    active_cat = st.session_state.active_category
+    active_tags = None
+    for label, tags in CATEGORIES:
+        if label == active_cat:
+            active_tags = tags
+            break
+
+    if active_tags:
+        filtered = [e for e in events_to_show if any(t in e.tags for t in active_tags)]
+    else:
+        filtered = events_to_show
+
+    st.markdown(f"### Tonight in {city.replace('-', ' ').title()}")
+    st.caption(f"{len(filtered)} events scored for you")
+
+    # Event cards grid
+    cols_per_row = 3
+    for row_start in range(0, len(filtered), cols_per_row):
+        cols = st.columns(cols_per_row)
+        for col_idx, ev in enumerate(filtered[row_start : row_start + cols_per_row]):
+            with cols[col_idx]:
+                sc = _score_class(ev.age_score)
+                source_icon = {"luma": "🟣", "eventbrite": "🟠", "google_places": "📍"}.get(ev.source, "📌")
+                st.markdown(
+                    f'<div class="event-card">'
+                    f'<div class="event-title">{ev.title}</div>'
+                    f'<div class="event-venue">{source_icon} {ev.venue_name or ev.source}</div>'
+                    f'<div class="event-meta">'
+                    f'<span class="score-badge {sc}">{ev.age_score:.0%} match</span>'
+                    f'<span>{ev.price or "Price TBD"}</span>'
+                    f'<span>{ev.start_time[11:16] if len(ev.start_time) > 11 else ""}</span>'
+                    f'</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
                 )
-                progress.progress(100)
-                status.empty()
 
-                # Display the plan
-                st.success(f"Found {len(plan.events)} events — here's your plan!")
-                st.markdown("---")
-                st.markdown(plan.itinerary_markdown)
+    # --- Evening plan section ---
+    st.markdown("---")
+    st.markdown("### Your Evening Plan")
 
-                # Show scored events in an expander
-                with st.expander(f"📊 All {len(plan.events)} scored events"):
-                    for ev in plan.events:
-                        score_bar = "🟢" * int(ev.age_score * 5) + "⚪" * (5 - int(ev.age_score * 5))
-                        st.markdown(
-                            f"**{ev.title}** — {ev.venue_name or ev.source}  \n"
-                            f"Age fit: {score_bar} ({ev.age_score:.2f})  \n"
-                            f"_{ev.start_time}_ | {ev.price or 'Price TBD'}"
-                        )
-                        st.markdown("---")
+    if st.session_state.plan:
+        plan = st.session_state.plan
+        st.markdown(
+            f"*AI-generated itinerary based on your age bracket and event scores*"
+        )
+        st.markdown(plan.itinerary_markdown)
 
-            except Exception as exc:
-                progress.progress(100)
-                status.empty()
-                st.error(f"Something went wrong: {exc}")
-                st.info(
-                    "Make sure your .env file has at least GROQ_API_KEY set. "
-                    "Event source API keys are optional — the app works with any subset."
-                )
+        if st.button("💾 Save This Plan"):
+            st.session_state.saved_plans.append(
+                {"date": plan.date, "city": plan.city, "md": plan.itinerary_markdown}
+            )
+            st.success("Plan saved!")
+    else:
+        st.info(
+            "Hit **Discover My Evening** above to generate a personalized itinerary."
+        )
 
-with col2:
-    st.markdown("### How it works")
-    st.markdown("""
-    1. **Fetch** events from Luma, Eventbrite, Google Places
-    2. **Cognify** — build a knowledge graph of events, venues & reviews
-    3. **Score** — rate each event by your age bracket fit
-    4. **Plan** — AI generates a complete evening itinerary
 
-    The more data in the knowledge graph, the smarter it gets.
-    """)
+# ---------------------------------------------------------------------------
+# Saved plans section
+# ---------------------------------------------------------------------------
+
+st.markdown("---")
+st.markdown("### Your evening plans")
+
+if st.session_state.saved_plans:
+    for i, sp in enumerate(reversed(st.session_state.saved_plans)):
+        with st.expander(f"Plan for {sp['city']} — {sp['date']}"):
+            st.markdown(sp["md"])
+else:
+    st.markdown(
+        '<div class="event-card" style="text-align:center; padding:2rem;">'
+        '<div style="font-size:2rem; margin-bottom:0.5rem;">📋</div>'
+        '<div style="color:#9ca3af;">No saved plans yet. Discover events and generate a plan to get started.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# How eventlocal works — 4-step cards
+# ---------------------------------------------------------------------------
+
+st.markdown("---")
+st.markdown("### How eventlocal works")
+st.caption(
+    "We treat your city's event ecosystem like a company knowledge base "
+    "— connected, searchable, and personalized to you."
+)
+
+steps = [
+    ("📡", "Step 1", "Aggregate", "Events pulled from Luma, Eventbrite, Google Places and more — all in one view"),
+    ("🧠", "Step 2", "Cognify", "Cognee builds a knowledge graph connecting events, venues, reviews and patterns"),
+    ("🎯", "Step 3", "Personalize", "Each event gets a 0-1 score based on your age bracket, vibe, and preferences"),
+    ("🌃", "Step 4", "Plan", "AI builds your complete evening: dinner → pre-game → main event → late night"),
+]
+
+step_cols = st.columns(4)
+for i, (icon, label, title, desc) in enumerate(steps):
+    with step_cols[i]:
+        st.markdown(
+            f'<div class="step-card">'
+            f'<div class="step-icon">{icon}</div>'
+            f'<div class="step-label">{label}</div>'
+            f'<div class="step-title">{title}</div>'
+            f'<div class="step-desc">{desc}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Event Brain concept table
+# ---------------------------------------------------------------------------
+
+st.markdown("---")
+st.markdown("### The Event Brain Concept")
+st.caption("eventlocal maps event ecosystems to company knowledge — here's the analogy")
+
+st.markdown(
+    '<table class="comparison-table">'
+    '<tr><th>Company Brain</th><th>Event Brain</th></tr>'
+    '<tr><td>Company docs</td><td>Event listings</td></tr>'
+    '<tr><td>Meeting notes</td><td>Venue reviews</td></tr>'
+    '<tr><td>Employee directory</td><td>Venue + promoter network</td></tr>'
+    '<tr><td>FAQ knowledge base</td><td>Event patterns</td></tr>'
+    '<tr><td>Onboarding guide</td><td>Personalized planner</td></tr>'
+    '</table>',
+    unsafe_allow_html=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Footer
+# ---------------------------------------------------------------------------
+
+st.markdown(
+    '<div class="footer">'
+    'eventlocal — Your city\'s Event Brain · Built for Company Brain Hackathon 2026<br>'
+    '<span style="color:#4b5563;">Powered by Cognee (Knowledge Graph) + Qwen3-32B (Groq)</span>'
+    '</div>',
+    unsafe_allow_html=True,
+)

@@ -1,13 +1,14 @@
 """
 Planner Agent — takes scored events + Cognee context and generates
 a personalized evening itinerary using Qwen3-32B via Groq.
+
+Falls back to a template-based plan when no GROQ_API_KEY is set.
 """
 from __future__ import annotations
 
-import json
 import structlog
 
-from app.llm import chat
+from app.config import settings
 from app.prompts import load_system_prompt
 from models.user_profile import Event, EveningPlan, UserProfile
 
@@ -49,9 +50,14 @@ async def generate_plan(
     date: str,
     cognee_context: str = "",
 ) -> EveningPlan:
-    """Generate an evening plan from scored events using the LLM."""
+    """Generate an evening plan — live LLM when available, template fallback."""
 
-    # Serialize top events for the LLM
+    if not settings.groq_api_key:
+        log.info("planner.template_fallback", reason="No GROQ_API_KEY set")
+        return _template_plan(events, profile, city, date)
+
+    from app.llm import chat
+
     events_text = "\n".join(
         f"- [{e.age_score:.2f}] {e.title} @ {e.venue_name or 'TBD'} "
         f"({e.start_time}) — {e.source} — {e.price or 'Price TBD'}"
@@ -82,7 +88,12 @@ async def generate_plan(
     ]
 
     log.info("planner.generating", event_count=len(events), age=profile.age)
-    itinerary_md = await chat(messages)
+
+    try:
+        itinerary_md = await chat(messages)
+    except Exception as exc:
+        log.error("planner.llm_error", error=str(exc))
+        return _template_plan(events, profile, city, date)
 
     return EveningPlan(
         city=city,
@@ -90,5 +101,57 @@ async def generate_plan(
         user_profile=profile,
         events=events,
         itinerary_markdown=itinerary_md,
-        explanation=f"Plan for a {profile.age}-year-old in {city} on {date}",
+        explanation=f"AI-generated plan for a {profile.age}-year-old in {city} on {date}",
+    )
+
+
+def _template_plan(
+    events: list[Event],
+    profile: UserProfile,
+    city: str,
+    date: str,
+) -> EveningPlan:
+    """Build a rule-based itinerary when no LLM is available."""
+    sorted_events = sorted(events, key=lambda e: e.age_score, reverse=True)
+
+    def _find(tags: list[str]) -> Event | None:
+        for ev in sorted_events:
+            if any(t in ev.tags for t in tags):
+                return ev
+        return None
+
+    dinner = _find(["fine-dining", "gastropub", "food-festival", "supper-club"])
+    pregame = _find(["cocktail", "craft-beer", "wine-bar", "speakeasy", "rooftop", "happy-hour"])
+    main = sorted_events[0] if sorted_events else None
+    late = _find(["nightclub", "dance", "jazz", "comedy", "live-music"])
+
+    lines = [f"# Your Evening in {city.replace('-', ' ').title()} — {date}\n"]
+
+    if dinner and dinner != main:
+        lines.append(f"🍽️ **DINNER (6:30 PM)** — {dinner.title} @ {dinner.venue_name}")
+        lines.append(f"   {dinner.description[:120]}\n")
+
+    if pregame and pregame not in (dinner, main):
+        lines.append(f"🍸 **PRE-GAME (8:00 PM)** — {pregame.title} @ {pregame.venue_name}")
+        lines.append(f"   {pregame.description[:120]}\n")
+
+    if main:
+        lines.append(f"🎶 **MAIN EVENT ({main.start_time[11:16] if len(main.start_time) > 11 else '9:00 PM'})** — {main.title} @ {main.venue_name}")
+        lines.append(f"   Score: {main.age_score:.2f} | {main.price or 'Price TBD'}")
+        lines.append(f"   {main.description[:120]}\n")
+
+    if late and late not in (dinner, pregame, main):
+        lines.append(f"🌙 **LATE NIGHT (11:00 PM)** — {late.title} @ {late.venue_name}")
+        lines.append(f"   {late.description[:120]}\n")
+
+    lines.append(f"\n**WHY THIS PLAN WORKS:** Curated for the {profile.age_bracket.value.replace('_', '-')} crowd based on age-fit scoring across {len(events)} events.")
+    lines.append("\n> *This is a template plan. Set GROQ_API_KEY for AI-generated itineraries.*")
+
+    return EveningPlan(
+        city=city,
+        date=date,
+        user_profile=profile,
+        events=sorted_events[:15],
+        itinerary_markdown="\n".join(lines),
+        explanation=f"Template plan for a {profile.age}-year-old in {city} on {date}",
     )
