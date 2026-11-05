@@ -257,6 +257,13 @@ CATEGORIES = [
     ("Gaming", ["gaming", "esports"]),
 ]
 
+SUPPORTED_CITIES = {
+    "bay-area": "Bay Area, CA",
+    "seattle": "Seattle, WA",
+    "los-angeles": "Los Angeles, CA",
+    "new-york": "New York, NY",
+}
+
 
 # ---------------------------------------------------------------------------
 # Session state init
@@ -355,7 +362,12 @@ with st.sidebar:
 
     st.divider()
 
-    city = st.selectbox("City", ["bay-area"], index=0)
+    city = st.selectbox(
+        "City",
+        list(SUPPORTED_CITIES.keys()),
+        index=0,
+        format_func=lambda c: SUPPORTED_CITIES[c],
+    )
     date = st.date_input("Date")
     date_str = date.isoformat() if date else "today"
 
@@ -374,9 +386,20 @@ with st.sidebar:
 cols = st.columns(len(CATEGORIES))
 for i, (label, _tags) in enumerate(CATEGORIES):
     with cols[i]:
-        if st.button(label, key=f"cat_{i}", use_container_width=True):
+        btn_type = "primary" if st.session_state.active_category == label else "secondary"
+        if st.button(label, key=f"cat_{i}", use_container_width=True, type=btn_type):
             st.session_state.active_category = label
 
+
+# ---------------------------------------------------------------------------
+# Search bar
+# ---------------------------------------------------------------------------
+
+search_query = st.text_input(
+    "Search events",
+    placeholder="Search by name, venue, tag... (e.g. jazz, rooftop, comedy)",
+    label_visibility="collapsed",
+)
 
 # ---------------------------------------------------------------------------
 # Discover button
@@ -517,6 +540,16 @@ else:
     else:
         filtered = events_to_show
 
+    if search_query:
+        q = search_query.lower()
+        filtered = [
+            e for e in filtered
+            if q in e.title.lower()
+            or q in e.description.lower()
+            or q in (e.venue_name or "").lower()
+            or any(q in t for t in e.tags)
+        ]
+
     st.markdown(f"### Tonight in {city.replace('-', ' ').title()}")
     st.caption(f"{len(filtered)} events scored for you")
 
@@ -545,6 +578,26 @@ else:
                     f'</div>',
                     unsafe_allow_html=True,
                 )
+                with st.expander("View details"):
+                    if ev.description:
+                        st.markdown(ev.description)
+                    else:
+                        st.caption("No description available.")
+                    detail_parts: list[str] = []
+                    if ev.venue_address:
+                        if ev.latitude and ev.longitude:
+                            maps_q = f"{ev.latitude},{ev.longitude}"
+                        else:
+                            maps_q = ev.venue_address.replace(" ", "+")
+                        detail_parts.append(f"**Location:** [{ev.venue_address}](https://www.google.com/maps/search/?api=1&query={maps_q})")
+                    if ev.start_time:
+                        detail_parts.append(f"**Time:** {ev.start_time}")
+                    if ev.url:
+                        detail_parts.append(f"**Link:** [Event page]({ev.url})")
+                    if ev.tags:
+                        detail_parts.append("**Tags:** " + " ".join(f"`{t}`" for t in ev.tags))
+                    if detail_parts:
+                        st.markdown("  \n".join(detail_parts))
 
     # --- Evening plan section ---
     st.markdown("---")
@@ -576,9 +629,30 @@ st.markdown("---")
 st.markdown("### Your evening plans")
 
 if st.session_state.saved_plans:
+    col_plans, col_export = st.columns([3, 1])
+    with col_export:
+        export_md = "\n\n---\n\n".join(
+            f"## {sp['city'].replace('-', ' ').title()} — {sp['date']}\n\n{sp['md']}"
+            for sp in st.session_state.saved_plans
+        )
+        st.download_button(
+            "Export All Plans",
+            data=export_md,
+            file_name="eventlocal-plans.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
     for i, sp in enumerate(reversed(st.session_state.saved_plans)):
-        with st.expander(f"Plan for {sp['city']} — {sp['date']}"):
+        with st.expander(f"Plan for {sp['city'].replace('-', ' ').title()} — {sp['date']}"):
             st.markdown(sp["md"])
+            plan_md = f"# {sp['city'].replace('-', ' ').title()} — {sp['date']}\n\n{sp['md']}"
+            st.download_button(
+                "Download this plan",
+                data=plan_md,
+                file_name=f"plan-{sp['city']}-{sp['date']}.md",
+                mime="text/markdown",
+                key=f"dl_{i}",
+            )
 else:
     st.markdown(
         '<div class="event-card" style="text-align:center; padding:2rem;">'
