@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     eventbrite_api_key: str = Field(default="", alias="EVENTBRITE_API_KEY")
     google_places_api_key: str = Field(default="", alias="GOOGLE_PLACES_API_KEY")
 
+    # --- TriggerWare ---
+    triggerware_url: str = Field(default="", alias="TRIGGERWARE_URL")
+    triggerware_api_key: str = Field(default="", alias="TRIGGERWARE_API_KEY")
+
     # --- App ---
     app_env: str = "development"
     app_port: int = 8000
