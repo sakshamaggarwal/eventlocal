@@ -5,11 +5,11 @@ Free tier: 5000 calls/day.
 """
 from __future__ import annotations
 
-import httpx
 import structlog
 from app.config import settings
 from models.user_profile import Event
 from sources.base import EventSource
+from sources.http_utils import fetch_with_retry
 
 log = structlog.get_logger()
 
@@ -59,13 +59,12 @@ class TicketmasterClient(EventSource):
             params["keyword"] = query
 
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    f"{self.BASE_URL}/events.json",
-                    params=params,
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            resp = await fetch_with_retry(
+                f"{self.BASE_URL}/events.json",
+                source=self.name,
+                params=params,
+            )
+            data = resp.json()
 
             embedded = data.get("_embedded", {})
             events = []

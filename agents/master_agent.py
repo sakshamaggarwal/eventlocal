@@ -16,6 +16,7 @@ import structlog
 from agents.layers.age_layer import apply_age_scores
 from agents.planner_agent import generate_plan
 from app.config import settings
+from app.db import cache_events, deduplicate_events, get_cached_events
 from knowledge.cognee_engine import TwoTierCogneeEngine
 from models.user_profile import Event, EveningPlan, UserProfile
 from sources import (
@@ -64,27 +65,52 @@ async def discover_events(
     city = city or settings.city
     log.info("master.start", city=city, date=date, age=profile.age, user_id=user_id)
 
-    # --- 1. Fetch events from all configured sources ---
+    # --- 1. Fetch events (cache-first, then live sources) ---
     demo_mode = settings.app_env == "demo" and not _has_any_api_key()
     if demo_mode:
         log.info("master.demo_mode", msg="Demo mode — using sample event data")
         all_events: list[Event] = get_sample_events(city, date)
     else:
-        if not _has_any_api_key():
-            log.warning("master.no_api_keys", msg="No event-source API keys configured")
-        tasks = [src.fetch_events(city, date) for src in _SOURCES]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Check cache first (1-hour TTL)
+        cached = await get_cached_events(city, date, max_age_seconds=3600)
+        if cached:
+            log.info("master.cache_hit", count=len(cached))
+            all_events = [Event(**ev) for ev in cached]
+        else:
+            if not _has_any_api_key():
+                log.warning("master.no_api_keys", msg="No event-source API keys configured")
+            tasks = [src.fetch_events(city, date) for src in _SOURCES]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        all_events = []
-        source_hits: dict[str, int] = {}
-        for i, result in enumerate(results):
-            src_name = _SOURCES[i].name
-            if isinstance(result, Exception):
-                log.error("master.source_error", source=src_name, error=str(result))
-            else:
-                source_hits[src_name] = len(result)
-                all_events.extend(result)
-        log.info("master.sources", hits=source_hits)
+            all_events = []
+            source_hits: dict[str, int] = {}
+            for i, result in enumerate(results):
+                src_name = _SOURCES[i].name
+                if isinstance(result, Exception):
+                    log.error("master.source_error", source=src_name, error=str(result))
+                else:
+                    source_hits[src_name] = len(result)
+                    all_events.extend(result)
+            log.info("master.sources", hits=source_hits)
+
+            # Cache to Supabase for next hour
+            if all_events:
+                event_dicts = [
+                    {
+                        "id": ev.id, "title": ev.title, "description": ev.description,
+                        "source": ev.source, "url": ev.url,
+                        "venue_name": ev.venue_name, "venue_address": ev.venue_address,
+                        "latitude": ev.latitude, "longitude": ev.longitude,
+                        "start_time": ev.start_time, "end_time": ev.end_time,
+                        "price": ev.price, "tags": ev.tags,
+                        "image_url": ev.image_url, "rsvp_count": ev.rsvp_count,
+                    }
+                    for ev in all_events
+                ]
+                await cache_events(event_dicts, city, date)
+
+        # Deduplicate across sources
+        all_events = deduplicate_events(all_events, date)
 
     log.info("master.fetched", total=len(all_events))
 
@@ -131,6 +157,50 @@ async def discover_events(
     )
 
     return plan
+
+
+async def background_ingest(city: str | None = None, date: str | None = None) -> int:
+    """Background hourly ingestion — fetch and cache events without scoring."""
+    from datetime import datetime as dt
+    city = city or settings.city
+    date = date or dt.now().strftime("%Y-%m-%d")
+    log.info("background_ingest.start", city=city, date=date)
+
+    if not _has_any_api_key():
+        return 0
+
+    tasks = [src.fetch_events(city, date) for src in _SOURCES]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    all_events: list[Event] = []
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            log.error("background_ingest.source_error", source=_SOURCES[i].name, error=str(result))
+        else:
+            all_events.extend(result)
+
+    all_events = deduplicate_events(all_events, date)
+
+    if all_events:
+        event_dicts = [
+            {
+                "id": ev.id, "title": ev.title, "description": ev.description,
+                "source": ev.source, "url": ev.url,
+                "venue_name": ev.venue_name, "venue_address": ev.venue_address,
+                "latitude": ev.latitude, "longitude": ev.longitude,
+                "start_time": ev.start_time, "end_time": ev.end_time,
+                "price": ev.price, "tags": ev.tags,
+                "image_url": ev.image_url, "rsvp_count": ev.rsvp_count,
+            }
+            for ev in all_events
+        ]
+        await cache_events(event_dicts, city, date)
+
+        engine = TwoTierCogneeEngine()
+        await engine.ingest_events(all_events)
+
+    log.info("background_ingest.done", city=city, date=date, count=len(all_events))
+    return len(all_events)
 
 
 def _build_cognee_query(profile: UserProfile, city: str, date: str) -> str:

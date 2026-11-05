@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     cognee_vector_db: str = Field(default="lancedb", alias="COGNEE_VECTOR_DB")
     cognee_graph_db: str = Field(default="networkx", alias="COGNEE_GRAPH_DB")
 
+    # --- Supabase (Database & Auth) ---
+    supabase_url: str = Field(default="", alias="SUPABASE_URL")
+    supabase_key: str = Field(default="", alias="SUPABASE_KEY")
+
     # --- TriggerWare ---
     triggerware_url: str = Field(default="", alias="TRIGGERWARE_URL")
     triggerware_api_key: str = Field(default="", alias="TRIGGERWARE_API_KEY")

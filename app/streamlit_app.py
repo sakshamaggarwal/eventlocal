@@ -16,6 +16,7 @@ except RuntimeError:
 
 from agents.master_agent import discover_events
 from app.config import settings
+from app.db import is_available as db_is_available, load_user_kb, save_user_kb
 from knowledge.cognee_engine import (
     export_all_kbs,
     get_user_kb,
@@ -227,6 +228,7 @@ def _system_status() -> str:
 
     from knowledge.cognee_engine import COGNEE_AVAILABLE
     tw = get_integration()
+    db_ok = db_is_available()
 
     def _dot(ok: bool) -> str:
         return '<span class="status-dot dot-green"></span>' if ok else '<span class="status-dot dot-yellow"></span>'
@@ -237,6 +239,7 @@ def _system_status() -> str:
         f'<span>{_dot(sources_live > 0)} Sources: {sources_live}/6 connected</span>'
         f'<span>{_dot(COGNEE_AVAILABLE)} Cognee: {"Active" if COGNEE_AVAILABLE else "Fallback"}</span>'
         f'<span>{_dot(not tw.is_mock)} Triggers: {"Live" if not tw.is_mock else "Mock"}</span>'
+        f'<span>{_dot(db_ok)} DB: {"Supabase" if db_ok else "In-Memory"}</span>'
         f'</div>'
     )
 
@@ -275,7 +278,13 @@ if "user_id" not in st.session_state:
     import uuid
     st.session_state.user_id = str(uuid.uuid4())[:8]
 
-# Restore user KB from session state on each rerun
+# Restore user KB: try Supabase first, fall back to session state
+_uid = st.session_state.user_id
+if _uid not in st.session_state.get("user_kbs", {}):
+    _db_kb = loop.run_until_complete(load_user_kb(_uid))
+    if _db_kb:
+        st.session_state.user_kbs[_uid] = _db_kb
+
 _persisted_kbs = st.session_state.get("user_kbs", {})
 for _uid, _kb_data in _persisted_kbs.items():
     restore_user_kb(_uid, _kb_data)
@@ -384,8 +393,10 @@ if st.button("🔍 Discover My Evening", type="primary", use_container_width=Tru
             )
             st.session_state.plan = plan
             st.session_state.scored_events = plan.events
-            # Persist user KB to session state (survives page reruns)
+            # Persist user KB to session state + Supabase
             st.session_state.user_kbs = export_all_kbs()
+            for _persist_uid, _persist_data in st.session_state.user_kbs.items():
+                loop.run_until_complete(save_user_kb(_persist_uid, _persist_data))
         except Exception as exc:
             st.error(f"Something went wrong: {exc}")
 

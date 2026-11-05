@@ -9,11 +9,11 @@ the Cognee knowledge graph with crowd/atmosphere data.
 """
 from __future__ import annotations
 
-import httpx
 import structlog
 from app.config import settings
 from models.user_profile import Event
 from sources.base import EventSource
+from sources.http_utils import fetch_with_retry
 
 log = structlog.get_logger()
 
@@ -55,14 +55,13 @@ class YelpClient(EventSource):
             params["term"] = query
 
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    f"{self.BASE_URL}/businesses/search",
-                    headers=headers,
-                    params=params,
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            resp = await fetch_with_retry(
+                f"{self.BASE_URL}/businesses/search",
+                source=self.name,
+                headers=headers,
+                params=params,
+            )
+            data = resp.json()
 
             events = []
             for biz in data.get("businesses", []):
@@ -101,14 +100,13 @@ class YelpClient(EventSource):
 
         headers = {"Authorization": f"Bearer {settings.yelp_api_key}"}
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    f"{self.BASE_URL}/businesses/{business_id}/reviews",
-                    headers=headers,
-                    params={"limit": 3, "sort_by": "yelp_sort"},
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            resp = await fetch_with_retry(
+                f"{self.BASE_URL}/businesses/{business_id}/reviews",
+                source=self.name,
+                headers=headers,
+                params={"limit": 3, "sort_by": "yelp_sort"},
+            )
+            data = resp.json()
 
             return [
                 {

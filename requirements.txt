@@ -17,3 +17,6 @@ structlog==24.4.0
 
 # Knowledge graph (Cognee GraphRAG — used when installed)
 cognee>=1.6.0
+
+# Database & Auth (Supabase — used when SUPABASE_URL is set)
+supabase>=2.10.0
