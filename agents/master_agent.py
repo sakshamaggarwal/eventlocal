@@ -18,12 +18,26 @@ from agents.planner_agent import generate_plan
 from app.config import settings
 from knowledge.cognee_engine import TwoTierCogneeEngine
 from models.user_profile import Event, EveningPlan, UserProfile
-from sources import EventbriteClient, GooglePlacesClient, LumaClient
+from sources import (
+    EventbriteClient,
+    GooglePlacesClient,
+    LumaClient,
+    SeatGeekClient,
+    TicketmasterClient,
+    YelpClient,
+)
 from sources.sample_data import get_sample_events
 
 log = structlog.get_logger()
 
-_SOURCES = [LumaClient(), EventbriteClient(), GooglePlacesClient()]
+_SOURCES = [
+    LumaClient(),
+    EventbriteClient(),
+    GooglePlacesClient(),
+    TicketmasterClient(),
+    YelpClient(),
+    SeatGeekClient(),
+]
 
 
 def _has_any_api_key() -> bool:
@@ -31,6 +45,9 @@ def _has_any_api_key() -> bool:
         settings.luma_api_key
         or settings.eventbrite_api_key
         or settings.google_places_api_key
+        or settings.ticketmaster_api_key
+        or settings.yelp_api_key
+        or settings.seatgeek_client_id
     )
 
 
@@ -44,20 +61,27 @@ async def discover_events(
     city = city or settings.city
     log.info("master.start", city=city, date=date, age=profile.age, user_id=user_id)
 
-    # --- 1. Fetch events (live APIs or sample data fallback) ---
-    if _has_any_api_key():
+    # --- 1. Fetch events from all configured sources ---
+    demo_mode = settings.app_env == "demo" and not _has_any_api_key()
+    if demo_mode:
+        log.info("master.demo_mode", msg="Demo mode — using sample event data")
+        all_events: list[Event] = get_sample_events(city, date)
+    else:
+        if not _has_any_api_key():
+            log.warning("master.no_api_keys", msg="No event-source API keys configured")
         tasks = [src.fetch_events(city, date) for src in _SOURCES]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        all_events: list[Event] = []
+        all_events = []
+        source_hits: dict[str, int] = {}
         for i, result in enumerate(results):
+            src_name = _SOURCES[i].name
             if isinstance(result, Exception):
-                log.error("master.source_error", source=_SOURCES[i].name, error=str(result))
+                log.error("master.source_error", source=src_name, error=str(result))
             else:
+                source_hits[src_name] = len(result)
                 all_events.extend(result)
-    else:
-        log.info("master.demo_mode", msg="No API keys set — using sample event data")
-        all_events = get_sample_events(city, date)
+        log.info("master.sources", hits=source_hits)
 
     log.info("master.fetched", total=len(all_events))
 
