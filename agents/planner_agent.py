@@ -8,6 +8,7 @@ import json
 import structlog
 
 from app.llm import chat
+from app.prompts import load_system_prompt
 from models.user_profile import Event, EveningPlan, UserProfile
 
 log = structlog.get_logger()
@@ -57,13 +58,16 @@ async def generate_plan(
         for e in events
     )
 
+    concierge_context = load_system_prompt()
+    planner_instructions = SYSTEM_PROMPT.format(
+        city=city,
+        age_bracket=profile.age_bracket.value,
+    )
+
     messages = [
         {
             "role": "system",
-            "content": SYSTEM_PROMPT.format(
-                city=city,
-                age_bracket=profile.age_bracket.value,
-            ),
+            "content": f"{planner_instructions}\n\n---\n\n{concierge_context}",
         },
         {
             "role": "user",
