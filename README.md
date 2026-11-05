@@ -1,8 +1,8 @@
 # eventlocal — Your City's Event Brain 🎉🧠
 
-> Personalized event discovery platform powered by a knowledge graph (Cognee) and open-source AI (Qwen3-32B).
+> AI-powered event discovery that understands your vibe. We aggregate events, build a knowledge graph, and plan your perfect evening.
 
-**Built for the Company Brain Hackathon 2026** — TechEquity AI @ Snowflake SVAI Hub, Menlo Park
+**Built for the Company Brain Hackathon 2026** — TechEquity AI @ Snowflake SVAI Hub, Menlo Park (Nov 3–6)
 
 ## What is eventlocal?
 
@@ -10,65 +10,98 @@ eventlocal is an **Event Brain** — it treats a city's event ecosystem like a c
 
 | Company Brain | Event Brain (eventlocal) |
 |---|---|
-| Company docs | Event listings (Luma, Eventbrite) |
+| Company docs | Event listings (Luma, Eventbrite, Google Places) |
 | Meeting notes | Venue reviews & crowd reports |
 | Employee directory | Venue database + promoter network |
 | FAQ knowledge base | Event patterns & recommendations |
 | Onboarding guide | Personalized evening planner |
 
-The platform aggregates events from multiple sources, builds a knowledge graph of venues/reviews/patterns using **Cognee**, and generates personalized evening plans through **Qwen3-32B** (via Groq).
-
 ## Architecture
 
 ```
-User (age slider) → Streamlit UI
-                         ↓
-                    FastAPI Backend
-                         ↓
-         ┌───────────────┼───────────────┐
-         ↓               ↓               ↓
-    Luma API      Eventbrite API   Google Places API
-         └───────────────┼───────────────┘
-                         ↓
-                  Cognee (Knowledge Graph)
-                    cognee.add() → cognee.cognify()
-                         ↓
-                  Age Personalization Layer
-                    (score 0-1 per event)
-                         ↓
-                  Qwen3-32B via Groq
-                    (itinerary generation)
-                         ↓
-                  Evening Plan 🌃
+User (age slider + social mode) → Streamlit UI
+                                      ↓
+                                 Master Agent
+                                      ↓
+                  ┌───────────────────┼───────────────────┐
+                  ↓                   ↓                   ↓
+             Luma API          Eventbrite API       Google Places API
+                  │             (or sample data in demo mode)            │
+                  └───────────────────┼───────────────────┘
+                                      ↓
+                        Two-Tier Cognee Knowledge Graph
+                          ├─ Global KB (events/venues/reviews)
+                          └─ Per-User KB (preferences/feedback)
+                                      ↓
+                            Custom Ontology (4 entities, 15 rels)
+                                      ↓
+                           Age Personalization Layer (score 0-1)
+                                      ↓
+                         Qwen3-32B via Groq (or template fallback)
+                                      ↓
+                              Evening Plan 🌃
 ```
 
-## Hackathon MVP
+## Features
 
-- **1 personalization layer**: Age bracket slider (under 21 / 20s / 30s / 40s / 50+)
-- **3 event sources**: Luma, Eventbrite, Google Places (flexible — can swap)
-- **1 city**: Bay Area
-- **Knowledge graph**: Cognee builds relationships between events, venues, reviews
-- **LLM**: Qwen3-32B on Groq (free tier, ~100 tok/s)
+### Demo Mode (Zero API Keys)
+The app runs end-to-end with **no API keys required**:
+- **16 curated Bay Area sample events** from all 3 sources (Luma, Eventbrite, Google Places)
+- **Template-based itinerary generation** with rule-based venue selection
+- **Full age personalization** — scoring works on sample data
+
+### Live Mode (With API Keys)
+Set keys incrementally — each one unlocks more:
+- `GROQ_API_KEY` → AI-generated itineraries via Qwen3-32B
+- `LUMA_API_KEY` → Live Luma events
+- `EVENTBRITE_API_KEY` → Live Eventbrite events
+- `GOOGLE_PLACES_API_KEY` → Live Google Places venues + reviews
+
+### Knowledge Graph (Cognee)
+- **Two-tier architecture**: Global KB (shared events/venues/reviews) + per-user local KB (preferences/feedback)
+- **Custom ontology**: 4 entity types (Event, Venue, Review, Pattern), 15 named relationships
+- **6 multi-hop query templates**: age_personalized, solo_friendly, date_night, group_outing, hidden_gems, neighborhood_crawl
+
+### TriggerWare Integration
+Event monitoring with 5 trigger types:
+- `new_events` — New events matching criteria
+- `price_drop` — Price changes on tracked events
+- `trending` — Events gaining traction
+- `venue_update` — Venue changes (hours, capacity)
+- `sold_out` — Sellout alerts for watchlisted events
+
+### Personalization
+- **Age bracket scoring** (MVP): Under 21 / 20s / 30s / 40s / 50+ with keyword-based 0-1 scoring
+- **Social mode toggle**: Solo / Group / Date
+- **Event Concierge** system prompt (289 lines) guiding the LLM's personality and recommendations
+
+### UI (Streamlit)
+- Dark theme with gradient accents
+- Category filter chips (Nightlife, Live Music, Tech Meetup, Comedy, etc.)
+- Scored event cards with match percentage
+- AI-generated evening plan
+- Saved plans
+- Knowledge graph view
+- System status indicators
+- "How it works" 4-step cards
+- Event Brain concept comparison table
 
 ## Quick Start
 
 ```bash
 # 1. Clone
-git clone https://github.com/sakshamtech12-org/eventlocal.git
+git clone https://github.com/sakshamaggarwal/eventlocal.git
 cd eventlocal
 
 # 2. Install
 pip install -r requirements.txt
 
-# 3. Configure
-cp .env.example .env
-# Edit .env — at minimum set GROQ_API_KEY (free from console.groq.com)
-
-# 4a. Run Streamlit UI (hackathon demo)
+# 3. Run (works immediately — no API keys needed for demo mode)
 streamlit run app/streamlit_app.py
 
-# 4b. Or run FastAPI backend
-python -m app.main
+# 4. (Optional) Configure live APIs
+cp .env.example .env
+# Get a free API key from console.groq.com and add to .env
 ```
 
 ## API
@@ -83,57 +116,70 @@ curl -X POST http://localhost:8000/discover \
   -d '{"age": 28, "date": "2026-11-05", "city": "bay-area"}'
 ```
 
+## Testing
+
+```bash
+pytest tests/ -v
+```
+
 ## Project Structure
 
 ```
 eventlocal/
 ├── app/
-│   ├── main.py              # FastAPI app
-│   ├── streamlit_app.py     # Streamlit demo UI
-│   ├── config.py            # Settings from .env
-│   └── llm.py               # Groq/Qwen3 client
+│   ├── main.py                 # FastAPI app
+│   ├── streamlit_app.py        # Streamlit UI (polished hackathon demo)
+│   ├── config.py               # Settings from .env
+│   ├── llm.py                  # Groq/Qwen3-32B client
+│   └── prompts.py              # System prompt loader
 ├── agents/
-│   ├── master_agent.py      # Orchestrator — fetch → cognify → score → plan
-│   ├── planner_agent.py     # LLM-powered itinerary builder
+│   ├── master_agent.py         # Orchestrator — fetch → cognify → score → plan
+│   ├── planner_agent.py        # LLM itinerary builder + template fallback
 │   └── layers/
-│       └── age_layer.py     # Age personalization (MVP layer)
+│       └── age_layer.py        # Age personalization (MVP layer)
 ├── sources/
-│   ├── base.py              # Abstract EventSource
-│   ├── luma_client.py       # Luma API
-│   ├── eventbrite_client.py # Eventbrite API
-│   └── google_places_client.py  # Google Places API + reviews
+│   ├── base.py                 # Abstract EventSource
+│   ├── luma_client.py          # Luma API
+│   ├── eventbrite_client.py    # Eventbrite API
+│   ├── google_places_client.py # Google Places API + reviews
+│   └── sample_data.py          # 16 curated Bay Area events (demo mode)
 ├── knowledge/
-│   └── cognee_engine.py     # Cognee knowledge graph wrapper
+│   ├── cognee_engine.py        # Two-tier Cognee knowledge graph
+│   └── ontology.py             # Custom ontology (4 entities, 15 rels)
+├── triggers/
+│   ├── client.py               # TriggerWare integration
+│   └── definitions.py          # 5 trigger definitions
 ├── models/
-│   └── user_profile.py      # Pydantic models
+│   └── user_profile.py         # Pydantic models (UserProfile, Event, EveningPlan)
 ├── tests/
-│   └── test_age_layer.py    # Age layer unit tests
+│   ├── test_age_layer.py       # Age scoring unit tests
+│   ├── test_sample_data.py     # Sample data validation
+│   └── test_pipeline.py        # End-to-end demo pipeline tests
+├── system-prompt.md            # Event Concierge persona (289 lines)
 ├── requirements.txt
 ├── Dockerfile
 ├── .env.example
 └── README.md
 ```
 
-## Post-Hackathon Roadmap
-
-- **More personalization layers**: Solo/group, local/traveling, networking/party, relationship status, cultural affinity
-- **More cities**: Seattle, NYC, LA, Austin
-- **More sources**: Partiful (scrape), Meetup (GraphQL), venue Instagram, Sulekha/EventMozo
-- **React frontend**: Replace Streamlit with production React UI
-- **User accounts**: Firestore, saved preferences, plan history
-- **Deployment**: GCP Cloud Run (sakshamtech12-org project)
-
 ## Tech Stack
 
 | Component | Technology |
 |---|---|
-| LLM | Qwen3-32B via Groq (free) |
-| Knowledge Graph | Cognee (GraphRAG) |
+| LLM | Qwen3-32B via Groq (free tier) |
+| Knowledge Graph | Cognee (GraphRAG) — two-tier architecture |
 | Backend | FastAPI + Python 3.12 |
 | Frontend (MVP) | Streamlit |
-| Frontend (Prod) | React |
 | Event Sources | Luma, Eventbrite, Google Places |
+| Monitoring | TriggerWare (mock + live backends) |
 | Deployment | Docker → GCP Cloud Run |
+
+## Hackathon MVP Scope
+
+- **1 personalization layer**: Age bracket slider (+ social mode toggle)
+- **3 event sources**: Luma, Eventbrite, Google Places
+- **1 city**: Bay Area
+- **Demo mode**: Works with zero API keys; keys unlock features incrementally
 
 ---
 

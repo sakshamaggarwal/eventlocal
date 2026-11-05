@@ -39,11 +39,12 @@ class UserProfile(BaseModel):
     # --- MVP (Hackathon) ---
     age: int = Field(ge=13, le=100, description="User's age")
 
+    # --- MVP social mode toggle ---
+    social_mode: str = "solo"  # "solo", "group", or "date"
+
     # --- Post-hackathon layers (kept as placeholders) ---
-    is_solo: bool | None = None          # solo vs group
     is_local: bool | None = None         # local vs traveling
     wants_networking: bool | None = None  # networking vs party
-    is_single: bool | None = None        # single vs relationship
     cultural_affinity: str | None = None  # e.g. "desi", "latin", "kpop"
 
     @property
