@@ -4,11 +4,11 @@ Docs: https://developers.google.com/maps/documentation/places/web-service
 """
 from __future__ import annotations
 
-import httpx
 import structlog
 from app.config import settings
 from models.user_profile import Event
 from sources.base import EventSource
+from sources.http_utils import fetch_with_retry
 
 log = structlog.get_logger()
 
@@ -38,16 +38,15 @@ class GooglePlacesClient(EventSource):
         search_query = query or f"nightlife bars clubs {city}"
 
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    f"{self.BASE_URL}/textsearch/json",
-                    params={
-                        "query": search_query,
-                        "key": settings.google_places_api_key,
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            resp = await fetch_with_retry(
+                f"{self.BASE_URL}/textsearch/json",
+                source=self.name,
+                params={
+                    "query": search_query,
+                    "key": settings.google_places_api_key,
+                },
+            )
+            data = resp.json()
 
             events = []
             for place in data.get("results", [])[:limit]:
@@ -76,17 +75,16 @@ class GooglePlacesClient(EventSource):
             return []
 
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    f"{self.BASE_URL}/details/json",
-                    params={
-                        "place_id": place_id,
-                        "fields": "name,reviews,rating,user_ratings_total",
-                        "key": settings.google_places_api_key,
-                    },
-                )
-                resp.raise_for_status()
-                result = resp.json().get("result", {})
+            resp = await fetch_with_retry(
+                f"{self.BASE_URL}/details/json",
+                source=self.name,
+                params={
+                    "place_id": place_id,
+                    "fields": "name,reviews,rating,user_ratings_total",
+                    "key": settings.google_places_api_key,
+                },
+            )
+            result = resp.json().get("result", {})
             return result.get("reviews", [])
         except Exception as exc:
             log.error("google_places.reviews_error", place_id=place_id, error=str(exc))
