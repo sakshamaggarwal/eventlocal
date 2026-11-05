@@ -30,6 +30,10 @@ cognee_data/
 # Streamlit
 .streamlit/secrets.toml
 
+# Proprietary config (tuned parameters, prompts, scoring weights)
+config/proprietary.py
+system-prompt.md
+
 # Testing
 .pytest_cache/
 htmlcov/

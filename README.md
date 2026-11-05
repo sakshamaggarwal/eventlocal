@@ -127,16 +127,19 @@ pytest tests/ -v
 ```
 eventlocal/
 ├── app/
-│   ├── main.py                 # FastAPI app
-│   ├── streamlit_app.py        # Streamlit UI (polished hackathon demo)
+│   ├── main.py                 # FastAPI app (API mode)
+│   ├── streamlit_app.py        # Streamlit UI (primary demo interface)
 │   ├── config.py               # Settings from .env
 │   ├── llm.py                  # Groq/Qwen3-32B client
-│   └── prompts.py              # System prompt loader
+│   └── prompts.py              # System prompt loader (with fallback chain)
 ├── agents/
 │   ├── master_agent.py         # Orchestrator — fetch → cognify → score → plan
 │   ├── planner_agent.py        # LLM itinerary builder + template fallback
 │   └── layers/
 │       └── age_layer.py        # Age personalization (MVP layer)
+├── config/
+│   ├── __init__.py             # Proprietary config loader (fallback chain)
+│   └── proprietary_defaults.py # Generic stubs (public — app runs with these)
 ├── sources/
 │   ├── base.py                 # Abstract EventSource
 │   ├── luma_client.py          # Luma API
@@ -147,20 +150,36 @@ eventlocal/
 │   ├── cognee_engine.py        # Two-tier Cognee knowledge graph
 │   └── ontology.py             # Custom ontology (4 entities, 15 rels)
 ├── triggers/
-│   ├── client.py               # TriggerWare integration
+│   ├── client.py               # TriggerWare integration (mock + live)
 │   └── definitions.py          # 5 trigger definitions
 ├── models/
 │   └── user_profile.py         # Pydantic models (UserProfile, Event, EveningPlan)
 ├── tests/
-│   ├── test_age_layer.py       # Age scoring unit tests
-│   ├── test_sample_data.py     # Sample data validation
-│   └── test_pipeline.py        # End-to-end demo pipeline tests
-├── system-prompt.md            # Event Concierge persona (289 lines)
+│   ├── test_age_layer.py       # Age scoring unit tests (6)
+│   ├── test_cognee_engine.py   # Two-tier KB tests (27)
+│   ├── test_ontology.py        # Ontology tests (21)
+│   ├── test_triggers.py        # TriggerWare tests (35)
+│   ├── test_sample_data.py     # Sample data validation (7)
+│   └── test_pipeline.py        # End-to-end demo pipeline tests (7)
+├── system-prompt.example.md    # Placeholder Event Concierge prompt (public)
+├── .streamlit/config.toml      # Streamlit dark theme config
 ├── requirements.txt
+├── runtime.txt                 # Python version for Streamlit Cloud
 ├── Dockerfile
 ├── .env.example
 └── README.md
 ```
+
+## Privacy & Proprietary Config
+
+The public repo ships with **generic stubs** — the app runs, but uses simplified parameters. For the full tuned experience, add two private files:
+
+| File | What it contains |
+|---|---|
+| `config/proprietary.py` | Tuned age signals, scoring weights, KB weights, ontology prompt, query templates |
+| `system-prompt.md` | Full 289-line Event Concierge system prompt |
+
+See [LAUNCH-GUIDE.md](LAUNCH-GUIDE.md) for exact steps.
 
 ## Tech Stack
 
@@ -172,7 +191,7 @@ eventlocal/
 | Frontend (MVP) | Streamlit |
 | Event Sources | Luma, Eventbrite, Google Places |
 | Monitoring | TriggerWare (mock + live backends) |
-| Deployment | Docker → GCP Cloud Run |
+| Deployment | Streamlit Community Cloud (primary) / Docker |
 
 ## Hackathon MVP Scope
 
