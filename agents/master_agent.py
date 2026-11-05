@@ -27,6 +27,7 @@ from sources import (
     YelpClient,
 )
 from sources.sample_data import get_sample_events
+from triggers import TriggerwareIntegration, get_integration
 
 log = structlog.get_logger()
 
@@ -38,6 +39,8 @@ _SOURCES = [
     YelpClient(),
     SeatGeekClient(),
 ]
+
+_triggers_initialized = False
 
 
 def _has_any_api_key() -> bool:
@@ -98,6 +101,18 @@ async def discover_events(
     # --- 2. Feed into Cognee two-tier knowledge graph ---
     engine = TwoTierCogneeEngine()
     await engine.ingest_events(all_events)
+
+    # --- 2b. Initialize TriggerWare (once) to watch for new events ---
+    global _triggers_initialized
+    if not _triggers_initialized:
+        try:
+            tw = get_integration()
+            await tw.setup_triggers()
+            await tw.watch_all()
+            _triggers_initialized = True
+            log.info("master.triggerware_ready", mode="mock" if tw.is_mock else "live")
+        except Exception as exc:
+            log.warning("master.triggerware_failed", error=str(exc))
 
     # --- 3. Apply age personalization ---
     scored = apply_age_scores(all_events, profile)

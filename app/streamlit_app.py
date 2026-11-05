@@ -16,8 +16,14 @@ except RuntimeError:
 
 from agents.master_agent import discover_events
 from app.config import settings
+from knowledge.cognee_engine import (
+    export_all_kbs,
+    get_user_kb,
+    restore_user_kb,
+)
 from models.user_profile import UserProfile
 from sources.sample_data import get_sample_events
+from triggers import get_integration
 
 # ---------------------------------------------------------------------------
 # Page config & custom CSS
@@ -214,6 +220,13 @@ def _system_status() -> str:
     luma_ok = bool(settings.luma_api_key)
     eb_ok = bool(settings.eventbrite_api_key)
     gp_ok = bool(settings.google_places_api_key)
+    tm_ok = bool(settings.ticketmaster_api_key)
+    yelp_ok = bool(settings.yelp_api_key)
+    sg_ok = bool(settings.seatgeek_client_id)
+    sources_live = sum([luma_ok, eb_ok, gp_ok, tm_ok, yelp_ok, sg_ok])
+
+    from knowledge.cognee_engine import COGNEE_AVAILABLE
+    tw = get_integration()
 
     def _dot(ok: bool) -> str:
         return '<span class="status-dot dot-green"></span>' if ok else '<span class="status-dot dot-yellow"></span>'
@@ -221,9 +234,9 @@ def _system_status() -> str:
     return (
         f'<div class="status-bar">'
         f'<span>{_dot(llm_ok)} LLM (Qwen3-32B): {"Live" if llm_ok else "Demo"}</span>'
-        f'<span>{_dot(luma_ok)} Luma: {"Connected" if luma_ok else "Sample data"}</span>'
-        f'<span>{_dot(eb_ok)} Eventbrite: {"Connected" if eb_ok else "Sample data"}</span>'
-        f'<span>{_dot(gp_ok)} Google Places: {"Connected" if gp_ok else "Sample data"}</span>'
+        f'<span>{_dot(sources_live > 0)} Sources: {sources_live}/6 connected</span>'
+        f'<span>{_dot(COGNEE_AVAILABLE)} Cognee: {"Active" if COGNEE_AVAILABLE else "Fallback"}</span>'
+        f'<span>{_dot(not tw.is_mock)} Triggers: {"Live" if not tw.is_mock else "Mock"}</span>'
         f'</div>'
     )
 
@@ -256,6 +269,16 @@ if "active_category" not in st.session_state:
     st.session_state.active_category = "All Events"
 if "show_graph" not in st.session_state:
     st.session_state.show_graph = False
+if "user_kbs" not in st.session_state:
+    st.session_state.user_kbs = {}
+if "user_id" not in st.session_state:
+    import uuid
+    st.session_state.user_id = str(uuid.uuid4())[:8]
+
+# Restore user KB from session state on each rerun
+_persisted_kbs = st.session_state.get("user_kbs", {})
+for _uid, _kb_data in _persisted_kbs.items():
+    restore_user_kb(_uid, _kb_data)
 
 
 # ---------------------------------------------------------------------------
@@ -352,14 +375,17 @@ for i, (label, _tags) in enumerate(CATEGORIES):
 
 if st.button("🔍 Discover My Evening", type="primary", use_container_width=True):
     profile = UserProfile(age=age, social_mode=social_mode.lower())
+    uid = st.session_state.user_id
 
     with st.spinner("Building your personalized plan..."):
         try:
             plan = asyncio.run(
-                discover_events(profile=profile, date=date_str, city=city)
+                discover_events(profile=profile, date=date_str, city=city, user_id=uid)
             )
             st.session_state.plan = plan
             st.session_state.scored_events = plan.events
+            # Persist user KB to session state (survives page reruns)
+            st.session_state.user_kbs = export_all_kbs()
         except Exception as exc:
             st.error(f"Something went wrong: {exc}")
 
@@ -369,39 +395,101 @@ if st.button("🔍 Discover My Evening", type="primary", use_container_width=Tru
 # ---------------------------------------------------------------------------
 
 if st.session_state.show_graph:
-    # Knowledge graph visualization
+    # Live knowledge graph visualization built from actual event data
     st.markdown("### Knowledge Graph")
-    st.markdown(
-        '<div class="graph-container">'
-        '<div class="step-icon">🧠</div>'
-        '<p style="color: #9ca3af; font-size: 1.1rem;">Event Knowledge Graph</p>'
-        '<p style="color: #6b7280; font-size: 0.85rem;">'
-        'The knowledge graph connects events, venues, reviews, and patterns.<br>'
-        'Cognee builds relationships using GraphRAG — enabling multi-hop queries<br>'
-        'like "jazz venues near Italian restaurants with good late-night vibes."'
-        '</p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
 
-    # Show graph stats
-    sample_events = get_sample_events()
+    graph_events = st.session_state.scored_events or get_sample_events()
+    venues: dict[str, list[str]] = {}
+    tag_edges: list[tuple[str, str]] = []
+    all_tags: set[str] = set()
+
+    for ev in graph_events:
+        vname = ev.venue_name or ev.source
+        venues.setdefault(vname, []).append(ev.title)
+        all_tags.update(ev.tags)
+
+    # Build graphviz DOT source
+    dot_lines = [
+        'digraph EventBrain {',
+        '  bgcolor="#0e1117";',
+        '  node [style=filled, fontcolor=white, fontsize=10];',
+        '  edge [color="#4b5563"];',
+        '  rankdir=LR;',
+    ]
+
+    # Venue nodes
+    for vname in venues:
+        safe = vname.replace('"', '\\"')
+        dot_lines.append(f'  "{safe}" [shape=house, fillcolor="#1e3a5f", label="{safe}"];')
+
+    # Event nodes + HOSTED_AT edges
+    for ev in graph_events[:20]:
+        eid = ev.title[:30].replace('"', '\\"')
+        sc_color = "#065f46" if ev.composite_score >= 0.7 else "#78350f" if ev.composite_score >= 0.4 else "#7f1d1d"
+        dot_lines.append(f'  "{eid}" [shape=box, fillcolor="{sc_color}", label="{eid}"];')
+        vname = (ev.venue_name or ev.source).replace('"', '\\"')
+        dot_lines.append(f'  "{eid}" -> "{vname}" [label="hosted_at", fontsize=8, fontcolor="#6b7280"];')
+
+    # Tag cluster nodes (top 10 tags)
+    from collections import Counter
+    tag_counts = Counter(t for ev in graph_events for t in ev.tags)
+    top_tags = [t for t, _ in tag_counts.most_common(10)]
+    for tag in top_tags:
+        safe = tag.replace('"', '\\"')
+        dot_lines.append(f'  "tag:{safe}" [shape=ellipse, fillcolor="#2d1b69", label="{safe}"];')
+
+    # Event→Tag edges
+    for ev in graph_events[:20]:
+        eid = ev.title[:30].replace('"', '\\"')
+        for tag in ev.tags:
+            if tag in top_tags:
+                safe = tag.replace('"', '\\"')
+                dot_lines.append(f'  "{eid}" -> "tag:{safe}" [style=dashed, color="#374151"];')
+
+    dot_lines.append('}')
+    dot_source = '\n'.join(dot_lines)
+
+    st.graphviz_chart(dot_source, use_container_width=True)
+
+    # Live stats from actual data
+    unique_venues = len(venues)
+    unique_tags = len(all_tags)
+    event_count = len(graph_events)
+    edges = event_count + sum(len(ev.tags) for ev in graph_events[:20])
+
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Events Indexed", len(sample_events))
-    col2.metric("Entity Types", "4")
-    col3.metric("Relationships", "15")
-    col4.metric("Query Templates", "6")
+    col1.metric("Events Indexed", event_count)
+    col2.metric("Venues", unique_venues)
+    col3.metric("Tags", unique_tags)
+    col4.metric("Graph Edges", edges)
 
-    st.markdown("**Entity Types:** Event, Venue, Review, Pattern")
-    st.markdown("**Relationships:** HOSTED_AT, NEAR_TO, REVIEWED_BY, SIMILAR_VIBE, SAME_NEIGHBORHOOD, ...")
-    st.markdown("**Multi-hop Queries:** age_personalized, solo_friendly, date_night, group_outing, hidden_gems, neighborhood_crawl")
+    # User KB stats
+    uid = st.session_state.user_id
+    user_kb = get_user_kb(uid)
+    if user_kb.query_history or user_kb.feedback:
+        st.markdown("#### Your Personal Knowledge Base")
+        kb_c1, kb_c2, kb_c3 = st.columns(3)
+        kb_c1.metric("Queries", len(user_kb.query_history))
+        kb_c2.metric("Feedback Signals", len(user_kb.feedback))
+        kb_c3.metric("Learned Tags", len(user_kb.preferred_tags) + len(user_kb.avoided_tags))
+
+    # TriggerWare status
+    tw = get_integration()
+    tw_status = asyncio.run(tw.status())
+    st.markdown("#### TriggerWare Status")
+    tw_c1, tw_c2, tw_c3 = st.columns(3)
+    tw_c1.metric("Mode", tw_status["mode"].title())
+    tw_c2.metric("Triggers", tw_status["triggers_registered"])
+    tw_c3.metric("Deltas Processed", tw_status["deltas_processed"])
+    if tw_status["trigger_names"]:
+        st.caption(f"Active triggers: {', '.join(tw_status['trigger_names'])}")
 
 else:
     # --- Scored events section ---
     events_to_show = st.session_state.scored_events
     if events_to_show is None:
         from agents.layers.age_layer import apply_age_scores
-        preview_profile = UserProfile(age=age)
+        preview_profile = UserProfile(age=age, social_mode=social_mode.lower())
         preview_events = get_sample_events(city, date_str)
         events_to_show = apply_age_scores(preview_events, preview_profile)
 
@@ -422,19 +510,24 @@ else:
     st.caption(f"{len(filtered)} events scored for you")
 
     # Event cards grid
+    source_icons = {
+        "luma": "🟣", "eventbrite": "🟠", "google_places": "📍",
+        "ticketmaster": "🎫", "yelp": "⭐", "seatgeek": "🎟️",
+    }
     cols_per_row = 3
     for row_start in range(0, len(filtered), cols_per_row):
         cols = st.columns(cols_per_row)
         for col_idx, ev in enumerate(filtered[row_start : row_start + cols_per_row]):
             with cols[col_idx]:
-                sc = _score_class(ev.age_score)
-                source_icon = {"luma": "🟣", "eventbrite": "🟠", "google_places": "📍"}.get(ev.source, "📌")
+                sc = _score_class(ev.composite_score)
+                icon = source_icons.get(ev.source, "📌")
                 st.markdown(
                     f'<div class="event-card">'
                     f'<div class="event-title">{ev.title}</div>'
-                    f'<div class="event-venue">{source_icon} {ev.venue_name or ev.source}</div>'
+                    f'<div class="event-venue">{icon} {ev.venue_name or ev.source}</div>'
                     f'<div class="event-meta">'
-                    f'<span class="score-badge {sc}">{ev.age_score:.0%} match</span>'
+                    f'<span class="score-badge {sc}">{ev.composite_score:.0%} match</span>'
+                    f'<span title="Age: {ev.age_score:.0%} | Social: {ev.social_score:.0%}">🎯 {ev.age_score:.0%} / 👥 {ev.social_score:.0%}</span>'
                     f'<span>{ev.price or "Price TBD"}</span>'
                     f'<span>{ev.start_time[11:16] if len(ev.start_time) > 11 else ""}</span>'
                     f'</div>'
@@ -497,9 +590,9 @@ st.caption(
 )
 
 steps = [
-    ("📡", "Step 1", "Aggregate", "Events pulled from Luma, Eventbrite, Google Places and more — all in one view"),
+    ("📡", "Step 1", "Aggregate", "Events from 6 sources: Luma, Eventbrite, Google Places, Ticketmaster, Yelp, SeatGeek"),
     ("🧠", "Step 2", "Cognify", "Cognee builds a knowledge graph connecting events, venues, reviews and patterns"),
-    ("🎯", "Step 3", "Personalize", "Each event gets a 0-1 score based on your age bracket, vibe, and preferences"),
+    ("🎯", "Step 3", "Personalize", "Each event scored by age bracket + social mode (solo/group/date), blended 70/30"),
     ("🌃", "Step 4", "Plan", "AI builds your complete evening: dinner → pre-game → main event → late night"),
 ]
 
