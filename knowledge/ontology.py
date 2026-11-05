@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from config import ONTOLOGY_EXTRACTION_PROMPT, QUERY_TEMPLATES
+
 
 # ---------------------------------------------------------------------------
 # Entity types
@@ -106,38 +108,7 @@ class Relationship(str, Enum):
 # Multi-hop query templates (6 templates)
 # ---------------------------------------------------------------------------
 
-MULTI_HOP_TEMPLATES: dict[str, str] = {
-    "age_personalized": (
-        "Find events → hosted_at → venues → that have reviews → "
-        "mentioning '{age_bracket}' crowd or '{age_appeal}' vibes. "
-        "Rank by review sentiment and age-bracket match."
-    ),
-    "solo_friendly": (
-        "Find events → hosted_at → venues → with reviews → "
-        "recommending 'solo' visits → in neighborhoods → "
-        "that are transit-friendly. Prefer moderate noise, casual formality."
-    ),
-    "date_night": (
-        "Find events → hosted_at → venues → with reviews → "
-        "mentioning 'dates' or 'romantic' → nearby → restaurants → "
-        "with $$+ price tier. Build a sequence via followed_by."
-    ),
-    "group_outing": (
-        "Find events → best_for_group 'large-group' → hosted_at → "
-        "venues → with capacity 'medium' or 'large' → "
-        "same_night as other group-friendly events."
-    ),
-    "hidden_gems": (
-        "Find venues → with reviews → rating >= 4.0 → "
-        "but low event count → has_pattern 'popularity-trend' rising → "
-        "in neighborhoods with nearby transit."
-    ),
-    "neighborhood_crawl": (
-        "Find venues → in_neighborhood '{neighborhood}' → "
-        "nearby → other venues → with events → same_night → "
-        "build followed_by chain ordered by start_time."
-    ),
-}
+MULTI_HOP_TEMPLATES: dict[str, str] = QUERY_TEMPLATES
 
 
 def get_query_template(template_name: str, **kwargs: str) -> str:
@@ -155,49 +126,7 @@ def get_query_template(template_name: str, **kwargs: str) -> str:
 # Ontology prompt — tells Cognee what to extract
 # ---------------------------------------------------------------------------
 
-ONTOLOGY_PROMPT = """\
-You are extracting structured knowledge from event listings, venue \
-descriptions, and user reviews for a city's event ecosystem.
-
-## Entity Types to Extract
-
-1. **EventEntity**: name, event_type, start_time, end_time, price_range, \
-vibes (list), crowd_type, group_size, noise_level, formality, age_appeal, tags
-2. **VenueEntity**: name, venue_type, neighborhood, address, capacity, \
-ambiance (list), noise_level, price_tier, transit_friendly, outdoor_space
-3. **ReviewEntity**: text, rating, source, sentiment, mentioned_vibes (list), \
-mentioned_crowd, recommended_for, noise_comment, wait_time
-4. **PatternEntity**: pattern_type, description, confidence, time_range, \
-demographic_shift, peak_times (list)
-
-## Relationship Types to Identify
-
-- hosted_at: Event → Venue
-- review_of: Review → Venue or Event
-- similar_crowd: Venue ↔ Venue (same demographic)
-- appeals_to_age: Event/Venue → age bracket (under-21, 20s, 30s, 40s, 50+)
-- best_for_group: Venue → group size (solo, couples, small-group, large-group)
-- same_night: Event ↔ Event (happening the same evening)
-- nearby: Venue ↔ Venue (within walking distance, ~15 min)
-- followed_by: Event → Event (good evening sequence)
-- has_pattern: Venue → Pattern (observed behavioral pattern)
-- similar_vibe: Event ↔ Event (matching vibes/ambiance)
-- recommended_with: Event → Event (often co-recommended)
-- popular_among: Venue → demographic group
-- reviewed_by: Venue → Review
-- in_neighborhood: Venue → neighborhood name
-- competes_with: Event ↔ Event (similar time slot and type)
-
-## Extraction Guidelines
-
-- Infer vibes from descriptive language ("electric atmosphere" → "electric")
-- Infer age_appeal from context ("craft cocktail lounge" → "30s", \
-"all-ages show" → "under-21, all-ages")
-- Mark crowd_type from review mentions ("lots of tech bros" → "young-professionals")
-- Identify patterns from multiple reviews of the same venue
-- Create nearby relationships for venues in the same neighborhood
-- Create same_night relationships for events on the same date
-"""
+ONTOLOGY_PROMPT = ONTOLOGY_EXTRACTION_PROMPT
 
 
 # ---------------------------------------------------------------------------

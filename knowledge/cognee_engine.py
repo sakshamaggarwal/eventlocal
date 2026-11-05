@@ -28,6 +28,13 @@ from typing import Any
 
 import structlog
 
+from config import (
+    KB_USER_WEIGHT,
+    KB_GLOBAL_WEIGHT,
+    FEEDBACK_CHOSEN_WEIGHT,
+    FEEDBACK_RATED_MULTIPLIER,
+    FEEDBACK_SKIPPED_WEIGHT,
+)
 from knowledge.ontology import (
     ONTOLOGY_PROMPT,
     MULTI_HOP_TEMPLATES,
@@ -88,11 +95,11 @@ class UserKnowledgeBase:
     def _update_preferences(self, event: Event, action: str, value: float) -> None:
         """Update preference scores based on feedback."""
         if action == "chosen":
-            weight = 0.1
+            weight = FEEDBACK_CHOSEN_WEIGHT
         elif action == "rated":
-            weight = (value - 3.0) * 0.05  # positive for 4-5, negative for 1-2
+            weight = (value - 3.0) * FEEDBACK_RATED_MULTIPLIER
         elif action == "skipped":
-            weight = -0.05
+            weight = FEEDBACK_SKIPPED_WEIGHT
         else:
             return
 
@@ -158,8 +165,8 @@ class TwoTierCogneeEngine:
     global relevance so that personalization wins ties.
     """
 
-    USER_WEIGHT = 1.5
-    GLOBAL_WEIGHT = 1.0
+    USER_WEIGHT = KB_USER_WEIGHT
+    GLOBAL_WEIGHT = KB_GLOBAL_WEIGHT
 
     def __init__(self) -> None:
         self._initialized = False

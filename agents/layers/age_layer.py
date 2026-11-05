@@ -5,35 +5,13 @@ This is the ONLY layer used in the Hackathon MVP.
 """
 from __future__ import annotations
 
+from config import AGE_SIGNALS, SCORING_BASE, SCORING_BOOST, SCORING_PENALIZE
 from models.user_profile import AgeBracket, Event, UserProfile
 
 
-# Keywords / tags that signal age affinity
 _AGE_SIGNALS: dict[AgeBracket, dict] = {
-    AgeBracket.UNDER_21: {
-        "boost": ["all-ages", "teen", "anime", "gaming", "esports", "boba", "college"],
-        "penalize": ["wine-tasting", "cocktail-lounge", "networking", "executive"],
-    },
-    AgeBracket.TWENTIES: {
-        "boost": ["nightclub", "edm", "rave", "brunch", "rooftop", "dating", "happy-hour",
-                   "tech-meetup", "startup", "hackathon", "bar-crawl"],
-        "penalize": ["senior", "retirement", "kids", "family"],
-    },
-    AgeBracket.THIRTIES: {
-        "boost": ["cocktail", "wine-bar", "networking", "live-music", "jazz", "comedy",
-                   "supper-club", "speakeasy", "rooftop", "craft-beer"],
-        "penalize": ["teen", "all-ages", "kids"],
-    },
-    AgeBracket.FORTIES: {
-        "boost": ["wine-tasting", "jazz", "theater", "fine-dining", "live-music",
-                   "gallery", "charity-gala", "golf"],
-        "penalize": ["rave", "edm", "teen", "college"],
-    },
-    AgeBracket.FIFTIES_PLUS: {
-        "boost": ["classical", "jazz", "theater", "wine-tasting", "garden-party",
-                   "museum", "opera", "cruise"],
-        "penalize": ["rave", "edm", "nightclub", "bar-crawl"],
-    },
+    AgeBracket.from_age({"under_21": 18, "21_29": 25, "30_39": 35, "40_49": 45, "50_plus": 55}[k]): v
+    for k, v in AGE_SIGNALS.items()
 }
 
 
@@ -57,15 +35,15 @@ def score_event(event: Event, profile: UserProfile) -> float:
         " ".join(t.lower() for t in event.tags),
     ])
 
-    score = 0.5
+    score = SCORING_BASE
 
     for keyword in signals["boost"]:
         if keyword in text:
-            score += 0.1
+            score += SCORING_BOOST
 
     for keyword in signals["penalize"]:
         if keyword in text:
-            score -= 0.1
+            score -= SCORING_PENALIZE
 
     return max(0.0, min(1.0, round(score, 2)))
 
