@@ -72,23 +72,52 @@ docker run -p 8501:8501 --env-file .env eventlocal
 ```
 config/__init__.py tries:
   1. config/proprietary.py  (full tuned values — gitignored)
-  2. config/proprietary_defaults.py  (generic stubs — in repo)
+  2. st.secrets["proprietary"]  (Streamlit Cloud secrets — TOML)
+  3. config/proprietary_defaults.py  (generic stubs — in repo)
 
 app/prompts.py tries:
   1. system-prompt.md  (full prompt — gitignored)
-  2. system-prompt.example.md  (placeholder — in repo)
-  3. Inline default  ("You are an event discovery assistant...")
+  2. st.secrets["system_prompt"]  (Streamlit Cloud secrets — TOML)
+  3. system-prompt.example.md  (placeholder — in repo)
+  4. Inline default  ("You are an event discovery assistant...")
 ```
 
 The `PROPRIETARY_LOADED` flag (importable from `config`) tells you which tier is active.
 
 ## Deploy to Streamlit Community Cloud
 
+This is the primary deployment method. Since the repo is public and proprietary files are gitignored, you load them through **Streamlit Secrets** instead.
+
 1. Go to [share.streamlit.io](https://share.streamlit.io)
 2. Sign in with GitHub
 3. Click **New app** → select `sakshamaggarwal/eventlocal`, branch `main`, file `app/streamlit_app.py`
-4. In **Advanced settings > Secrets**, add your API keys and optionally paste `config/proprietary.py` content
+4. In **Advanced settings > Secrets**, paste the contents of your `secrets.toml` file (see below)
 5. Click **Deploy!**
+
+### Secrets Format
+
+The `secrets.toml` file contains your GROQ API key, the full system prompt, and all tuned proprietary parameters. The format is:
+
+```toml
+GROQ_API_KEY = "gsk_your-real-key-here"
+
+system_prompt = "# Event Concierge AI — System Prompt\n\n..."
+
+[proprietary]
+AGE_SIGNALS = '{"under_21": {"boost": ["all-ages", ...], ...}}'
+SCORING_BASE = 0.5
+SCORING_BOOST = 0.1
+SCORING_PENALIZE = 0.1
+KB_USER_WEIGHT = 1.5
+KB_GLOBAL_WEIGHT = 1.0
+FEEDBACK_CHOSEN_WEIGHT = 0.1
+FEEDBACK_RATED_MULTIPLIER = 0.05
+FEEDBACK_SKIPPED_WEIGHT = -0.05
+ONTOLOGY_EXTRACTION_PROMPT = "You are extracting structured knowledge..."
+QUERY_TEMPLATES = '{"age_personalized": "Find events → ...", ...}'
+```
+
+The full paste-ready `secrets.toml` is in the project's private launch bundle (not in the repo). JSON values (AGE_SIGNALS, QUERY_TEMPLATES) are stored as JSON strings; the loader parses them automatically.
 
 ## Files Summary
 
@@ -98,7 +127,8 @@ The `PROPRIETARY_LOADED` flag (importable from `config`) tells you which tier is
 | `config/proprietary.py` | No (gitignored) | Full tuned parameters |
 | `system-prompt.example.md` | Yes | Placeholder prompt (25 lines) |
 | `system-prompt.md` | No (gitignored) | Full Event Concierge prompt (289 lines) |
-| `.env` | No (gitignored) | API keys |
+| `.env` | No (gitignored) | API keys (local) |
+| `secrets.toml` | No (private) | Paste-ready Streamlit Cloud secrets |
 
 ---
 
