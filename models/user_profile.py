@@ -77,12 +77,14 @@ class Event(BaseModel):
 
     # Personalization scores (filled by layers)
     age_score: float = 0.0     # 0-1
+    social_score: float = 0.0  # 0-1
 
     @property
     def composite_score(self) -> float:
-        """Weighted blend of all layer scores. MVP: age only."""
-        # TODO: add weights config once more layers exist
-        return self.age_score
+        """Weighted blend of all layer scores."""
+        from config import SOCIAL_WEIGHT
+        age_weight = 1.0 - SOCIAL_WEIGHT
+        return round(self.age_score * age_weight + self.social_score * SOCIAL_WEIGHT, 3)
 
 
 class EveningPlan(BaseModel):

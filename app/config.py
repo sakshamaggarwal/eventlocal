@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     yelp_api_key: str = Field(default="", alias="YELP_API_KEY")
     seatgeek_client_id: str = Field(default="", alias="SEATGEEK_CLIENT_ID")
 
+    # --- Cognee (Knowledge Graph) ---
+    cognee_llm_api_key: str = Field(default="", alias="COGNEE_LLM_API_KEY")
+    cognee_vector_db: str = Field(default="lancedb", alias="COGNEE_VECTOR_DB")
+    cognee_graph_db: str = Field(default="networkx", alias="COGNEE_GRAPH_DB")
+
     # --- TriggerWare ---
     triggerware_url: str = Field(default="", alias="TRIGGERWARE_URL")
     triggerware_api_key: str = Field(default="", alias="TRIGGERWARE_API_KEY")

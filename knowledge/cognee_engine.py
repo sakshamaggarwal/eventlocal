@@ -47,10 +47,25 @@ log = structlog.get_logger()
 
 try:
     import cognee
+    from app.config import settings as app_settings
+
     COGNEE_AVAILABLE = True
+
+    cognee_llm_key = app_settings.cognee_llm_api_key or app_settings.groq_api_key
+    if cognee_llm_key:
+        cognee.config.set_llm_config({
+            "llm_api_key": cognee_llm_key,
+            "llm_model": app_settings.llm_model,
+            "llm_provider": "groq" if "groq" in app_settings.llm_base_url else "openai",
+            "llm_endpoint": app_settings.llm_base_url,
+        })
+    log.info("cognee.configured", vector_db=app_settings.cognee_vector_db, graph_db=app_settings.cognee_graph_db)
 except ImportError:
     COGNEE_AVAILABLE = False
     log.warning("cognee.not_installed", msg="cognee not installed — running without knowledge graph")
+except Exception as exc:
+    COGNEE_AVAILABLE = False
+    log.warning("cognee.config_error", error=str(exc), msg="cognee config failed — running without knowledge graph")
 
 
 # ---------------------------------------------------------------------------
