@@ -47,10 +47,25 @@ log = structlog.get_logger()
 
 try:
     import cognee
+    from app.config import settings as app_settings
+
     COGNEE_AVAILABLE = True
+
+    cognee_llm_key = app_settings.cognee_llm_api_key or app_settings.groq_api_key
+    if cognee_llm_key:
+        cognee.config.set_llm_config({
+            "llm_api_key": cognee_llm_key,
+            "llm_model": app_settings.llm_model,
+            "llm_provider": "groq" if "groq" in app_settings.llm_base_url else "openai",
+            "llm_endpoint": app_settings.llm_base_url,
+        })
+    log.info("cognee.configured", vector_db=app_settings.cognee_vector_db, graph_db=app_settings.cognee_graph_db)
 except ImportError:
     COGNEE_AVAILABLE = False
     log.warning("cognee.not_installed", msg="cognee not installed — running without knowledge graph")
+except Exception as exc:
+    COGNEE_AVAILABLE = False
+    log.warning("cognee.config_error", error=str(exc), msg="cognee config failed — running without knowledge graph")
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +80,25 @@ class UserFeedback:
     value: float = 0.0       # rating value (1-5) or 1.0/0.0 for chosen/skipped
     timestamp: float = 0.0
     tags: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "event_id": self.event_id,
+            "action": self.action,
+            "value": self.value,
+            "timestamp": self.timestamp,
+            "tags": self.tags,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "UserFeedback":
+        return cls(
+            event_id=d["event_id"],
+            action=d["action"],
+            value=d.get("value", 0.0),
+            timestamp=d.get("timestamp", 0.0),
+            tags=d.get("tags", []),
+        )
 
 
 @dataclass
@@ -115,6 +149,28 @@ class UserKnowledgeBase:
                 self.preferred_venues.get(event.venue_name, 0.0) + weight
             )
 
+    def to_dict(self) -> dict:
+        return {
+            "user_id": self.user_id,
+            "query_history": self.query_history,
+            "feedback": [fb.to_dict() for fb in self.feedback],
+            "preferred_vibes": self.preferred_vibes,
+            "preferred_venues": self.preferred_venues,
+            "preferred_tags": self.preferred_tags,
+            "avoided_tags": self.avoided_tags,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "UserKnowledgeBase":
+        kb = cls(user_id=d["user_id"])
+        kb.query_history = d.get("query_history", [])
+        kb.feedback = [UserFeedback.from_dict(f) for f in d.get("feedback", [])]
+        kb.preferred_vibes = d.get("preferred_vibes", {})
+        kb.preferred_venues = d.get("preferred_venues", {})
+        kb.preferred_tags = d.get("preferred_tags", {})
+        kb.avoided_tags = d.get("avoided_tags", {})
+        return kb
+
     def get_preference_context(self) -> str:
         """Return a text summary of user preferences for search augmentation."""
         parts = []
@@ -151,6 +207,18 @@ def get_user_kb(user_id: str) -> UserKnowledgeBase:
     if user_id not in _user_kbs:
         _user_kbs[user_id] = UserKnowledgeBase(user_id=user_id)
     return _user_kbs[user_id]
+
+
+def restore_user_kb(user_id: str, data: dict) -> UserKnowledgeBase:
+    """Restore a user KB from serialized data (e.g. session state)."""
+    kb = UserKnowledgeBase.from_dict(data)
+    _user_kbs[user_id] = kb
+    return kb
+
+
+def export_all_kbs() -> dict[str, dict]:
+    """Serialize all user KBs for persistence."""
+    return {uid: kb.to_dict() for uid, kb in _user_kbs.items()}
 
 
 class TwoTierCogneeEngine:

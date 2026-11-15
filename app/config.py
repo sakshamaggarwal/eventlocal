@@ -25,6 +25,18 @@ class Settings(BaseSettings):
     luma_api_key: str = Field(default="", alias="LUMA_API_KEY")
     eventbrite_api_key: str = Field(default="", alias="EVENTBRITE_API_KEY")
     google_places_api_key: str = Field(default="", alias="GOOGLE_PLACES_API_KEY")
+    ticketmaster_api_key: str = Field(default="", alias="TICKETMASTER_API_KEY")
+    yelp_api_key: str = Field(default="", alias="YELP_API_KEY")
+    seatgeek_client_id: str = Field(default="", alias="SEATGEEK_CLIENT_ID")
+
+    # --- Cognee (Knowledge Graph) ---
+    cognee_llm_api_key: str = Field(default="", alias="COGNEE_LLM_API_KEY")
+    cognee_vector_db: str = Field(default="lancedb", alias="COGNEE_VECTOR_DB")
+    cognee_graph_db: str = Field(default="networkx", alias="COGNEE_GRAPH_DB")
+
+    # --- Supabase (Database & Auth) ---
+    supabase_url: str = Field(default="", alias="SUPABASE_URL")
+    supabase_key: str = Field(default="", alias="SUPABASE_KEY")
 
     # --- TriggerWare ---
     triggerware_url: str = Field(default="", alias="TRIGGERWARE_URL")

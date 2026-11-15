@@ -4,11 +4,11 @@ Docs: https://docs.lu.ma/reference/
 """
 from __future__ import annotations
 
-import httpx
 import structlog
 from app.config import settings
 from models.user_profile import Event
 from sources.base import EventSource
+from sources.http_utils import fetch_with_retry
 
 log = structlog.get_logger()
 
@@ -37,15 +37,13 @@ class LumaClient(EventSource):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                # Discover events via search or listing
-                resp = await client.get(
-                    f"{self.BASE_URL}/event/search",
-                    headers=headers,
-                    params={**params, "query": query or city},
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            resp = await fetch_with_retry(
+                f"{self.BASE_URL}/event/search",
+                source=self.name,
+                headers=headers,
+                params={**params, "query": query or city},
+            )
+            data = resp.json()
 
             events = []
             for entry in data.get("entries", []):

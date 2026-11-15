@@ -76,6 +76,31 @@ Extract structured knowledge from event listings and venue descriptions.
 # Multi-hop query templates (generic placeholders)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Social mode personalization signals
+# ---------------------------------------------------------------------------
+
+SOCIAL_SIGNALS: dict[str, dict] = {
+    "solo": {
+        "boost": ["jazz", "museum", "cafe", "gallery", "workshop", "comedy", "reading", "meditation", "quiet", "bar"],
+        "penalize": ["group", "couples", "team", "family", "party"],
+    },
+    "group": {
+        "boost": ["bar-crawl", "party", "group", "dance", "nightclub", "rooftop", "trivia", "karaoke", "festival", "concert", "beer", "sports"],
+        "penalize": ["intimate", "quiet", "solo", "meditation", "romantic"],
+    },
+    "date": {
+        "boost": ["cocktail", "speakeasy", "rooftop", "jazz", "wine-bar", "romantic", "intimate", "dinner", "sunset", "live-music", "lounge"],
+        "penalize": ["loud", "crowded", "family", "kids", "gaming", "esports", "sports-bar"],
+    },
+}
+
+SOCIAL_WEIGHT = 0.3
+
+# ---------------------------------------------------------------------------
+# Multi-hop query templates (generic placeholders)
+# ---------------------------------------------------------------------------
+
 QUERY_TEMPLATES: dict[str, str] = {
     "age_personalized": (
         "Find events for '{age_bracket}' age group, ranked by relevance."
