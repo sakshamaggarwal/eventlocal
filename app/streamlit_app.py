@@ -222,9 +222,8 @@ def _system_status() -> str:
     eb_ok = bool(settings.eventbrite_api_key)
     gp_ok = bool(settings.google_places_api_key)
     tm_ok = bool(settings.ticketmaster_api_key)
-    yelp_ok = bool(settings.yelp_api_key)
     sg_ok = bool(settings.seatgeek_client_id)
-    sources_live = sum([luma_ok, eb_ok, gp_ok, tm_ok, yelp_ok, sg_ok])
+    sources_live = sum([luma_ok, eb_ok, gp_ok, tm_ok, sg_ok])
 
     from knowledge.cognee_engine import COGNEE_AVAILABLE
     tw = get_integration()
@@ -556,7 +555,7 @@ else:
     # Event cards grid
     source_icons = {
         "luma": "🟣", "eventbrite": "🟠", "google_places": "📍",
-        "ticketmaster": "🎫", "yelp": "⭐", "seatgeek": "🎟️",
+        "ticketmaster": "🎫", "seatgeek": "🎟️",
     }
     cols_per_row = 3
     for row_start in range(0, len(filtered), cols_per_row):
@@ -675,7 +674,7 @@ st.caption(
 )
 
 steps = [
-    ("📡", "Step 1", "Aggregate", "Events from 6 sources: Luma, Eventbrite, Google Places, Ticketmaster, Yelp, SeatGeek"),
+    ("📡", "Step 1", "Aggregate", "Events from 5 sources: Luma, Eventbrite, Google Places, Ticketmaster, SeatGeek"),
     ("🧠", "Step 2", "Cognify", "Cognee builds a knowledge graph connecting events, venues, reviews and patterns"),
     ("🎯", "Step 3", "Personalize", "Each event scored by age bracket + social mode (solo/group/date), blended 70/30"),
     ("🌃", "Step 4", "Plan", "AI builds your complete evening: dinner → pre-game → main event → late night"),

@@ -25,7 +25,6 @@ from sources import (
     LumaClient,
     SeatGeekClient,
     TicketmasterClient,
-    YelpClient,
 )
 from sources.sample_data import get_sample_events
 from triggers import TriggerwareIntegration, get_integration
@@ -37,7 +36,6 @@ _SOURCES = [
     EventbriteClient(),
     GooglePlacesClient(),
     TicketmasterClient(),
-    YelpClient(),
     SeatGeekClient(),
 ]
 
@@ -50,7 +48,6 @@ def _has_any_api_key() -> bool:
         or settings.eventbrite_api_key
         or settings.google_places_api_key
         or settings.ticketmaster_api_key
-        or settings.yelp_api_key
         or settings.seatgeek_client_id
     )
 
