@@ -101,6 +101,16 @@ SOCIAL_WEIGHT = 0.3
 # Multi-hop query templates (generic placeholders)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Known free OpenRouter models (empty in public repo — set in proprietary.py)
+# ---------------------------------------------------------------------------
+
+KNOWN_FREE_MODELS: frozenset = frozenset()
+
+# ---------------------------------------------------------------------------
+# Multi-hop query templates (generic placeholders)
+# ---------------------------------------------------------------------------
+
 QUERY_TEMPLATES: dict[str, str] = {
     "age_personalized": (
         "Find events for '{age_bracket}' age group, ranked by relevance."

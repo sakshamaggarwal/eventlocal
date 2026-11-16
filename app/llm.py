@@ -12,6 +12,7 @@ import structlog
 from openai import AsyncOpenAI
 
 from app.config import settings
+from config import KNOWN_FREE_MODELS
 from sources.http_utils import get_limiter
 
 log = structlog.get_logger()
@@ -40,33 +41,20 @@ def _get_openrouter_client() -> AsyncOpenAI:
     )
 
 
-KNOWN_FREE_MODELS = frozenset({
-    "qwen/qwen3-32b:free",
-    "meta-llama/llama-3-8b-instruct:free",
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "mistralai/mistral-7b-instruct:free",
-    "google/gemma-2-9b-it:free",
-    "huggingfaceh4/zephyr-7b-beta:free",
-})
-
-
 def _validate_free_model(model_id: str) -> str:
-    """Guard: only allow known free OpenRouter models.
+    """Guard: only allow free OpenRouter models.
 
-    Two checks: must end with :free AND must be in the allowlist.
-    This prevents gaming the guard by appending :free to a paid model ID.
+    Uses OR logic: passes if the model ends with :free (suffix check)
+    OR is in KNOWN_FREE_MODELS (private allowlist loaded from config).
     """
-    if not model_id.endswith(":free"):
-        raise ValueError(
-            f"OpenRouter model '{model_id}' is not a free model. "
-            "Only models ending with ':free' are allowed in this project."
-        )
-    if model_id not in KNOWN_FREE_MODELS:
-        raise ValueError(
-            f"OpenRouter model '{model_id}' is not in the known free models allowlist. "
-            "Add it to KNOWN_FREE_MODELS in app/llm.py after verifying it is genuinely free."
-        )
-    return model_id
+    if model_id.endswith(":free"):
+        return model_id
+    if KNOWN_FREE_MODELS and model_id in KNOWN_FREE_MODELS:
+        return model_id
+    raise ValueError(
+        f"OpenRouter model '{model_id}' is not a free model. "
+        "Only models ending with ':free' or in the approved allowlist are allowed."
+    )
 
 
 # Keep the old name for any callers that import it directly

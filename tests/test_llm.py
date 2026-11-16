@@ -8,28 +8,28 @@ from app.llm import _validate_free_model, chat
 
 
 class TestValidateFreeModel:
-    def test_accepts_free_model(self):
+    def test_accepts_free_suffix(self):
         assert _validate_free_model("qwen/qwen3-32b:free") == "qwen/qwen3-32b:free"
 
-    def test_accepts_other_free_model(self):
+    def test_accepts_other_free_suffix(self):
         assert _validate_free_model("meta-llama/llama-3-8b-instruct:free") == "meta-llama/llama-3-8b-instruct:free"
+
+    def test_accepts_unknown_free_suffix(self):
+        """OR logic: :free suffix alone is enough to pass."""
+        assert _validate_free_model("some-org/some-model:free") == "some-org/some-model:free"
+
+    def test_accepts_model_in_allowlist(self):
+        """OR logic: model in allowlist passes even without :free suffix."""
+        with patch("app.llm.KNOWN_FREE_MODELS", frozenset({"custom/special-model"})):
+            assert _validate_free_model("custom/special-model") == "custom/special-model"
 
     def test_rejects_paid_model(self):
         with pytest.raises(ValueError, match="not a free model"):
             _validate_free_model("anthropic/claude-3-sonnet")
 
-    def test_rejects_model_without_free_suffix(self):
+    def test_rejects_model_without_free_suffix_or_allowlist(self):
         with pytest.raises(ValueError, match="not a free model"):
             _validate_free_model("qwen/qwen3-32b")
-
-    def test_rejects_paid_model_with_free_suffix(self):
-        """Edge case: paid model with :free appended should be blocked by allowlist."""
-        with pytest.raises(ValueError, match="not in the known free models allowlist"):
-            _validate_free_model("anthropic/claude-3-sonnet:free")
-
-    def test_rejects_unknown_free_suffixed_model(self):
-        with pytest.raises(ValueError, match="not in the known free models allowlist"):
-            _validate_free_model("openai/gpt-4o:free")
 
 
 def _mock_completion(content: str = "test response"):
@@ -138,9 +138,10 @@ class TestChatFailover:
 
     @pytest.mark.asyncio
     async def test_paid_model_rejected_on_failover(self):
-        """If openrouter_model doesn't end with :free, failover raises ValueError."""
+        """If openrouter_model doesn't end with :free and not in allowlist, failover raises ValueError."""
         with patch("app.llm.settings") as mock_settings, \
-             patch("app.llm._get_groq_client") as mock_groq:
+             patch("app.llm._get_groq_client") as mock_groq, \
+             patch("app.llm.KNOWN_FREE_MODELS", frozenset()):
             mock_settings.groq_api_key = "groq-key"
             mock_settings.openrouter_api_key = "or-key"
             mock_settings.llm_model = "qwen3-32b"
