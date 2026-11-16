@@ -17,6 +17,7 @@ from agents.layers.age_layer import apply_age_scores
 from agents.planner_agent import generate_plan
 from app.config import settings
 from app.db import cache_events, deduplicate_events, get_cached_events
+from config import COGNEE_BRACKET_DESCRIPTIONS
 from knowledge.cognee_engine import TwoTierCogneeEngine
 from models.user_profile import Event, EveningPlan, UserProfile
 from sources import (
@@ -204,14 +205,7 @@ async def background_ingest(city: str | None = None, date: str | None = None) ->
 
 
 def _build_cognee_query(profile: UserProfile, city: str, date: str) -> str:
-    bracket_desc = {
-        "under_21": "under 21, looking for all-ages fun",
-        "21_29": "in their twenties, looking for nightlife and social events",
-        "30_39": "in their thirties, looking for quality experiences",
-        "40_49": "in their forties, looking for refined entertainment",
-        "50_plus": "over 50, looking for cultural and relaxed outings",
-    }
-    age_desc = bracket_desc.get(profile.age_bracket.value, "")
+    age_desc = COGNEE_BRACKET_DESCRIPTIONS.get(profile.age_bracket.value, "")
 
     return (
         f"Best events and venues in {city} on {date} for someone {age_desc}. "
