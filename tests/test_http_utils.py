@@ -44,7 +44,7 @@ class TestGetLimiter:
 
 class TestSourceRateLimits:
     def test_all_sources_have_limits(self):
-        for source in ["ticketmaster", "seatgeek", "luma", "eventbrite", "google_places", "llm"]:
+        for source in ["ticketmaster", "yelp", "seatgeek", "luma", "eventbrite", "google_places", "llm"]:
             assert source in SOURCE_RATE_LIMITS
 
 

@@ -46,6 +46,7 @@ _limiters: dict[str, RateLimiter] = {}
 
 SOURCE_RATE_LIMITS = {
     "ticketmaster": 80,   # 5000/day ≈ 3.5/min, generous burst
+    "yelp": 80,           # 5000/day (deferred — client not active yet)
     "seatgeek": 120,      # no hard limit
     "luma": 60,
     "eventbrite": 60,

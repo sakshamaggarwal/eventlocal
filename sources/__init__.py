@@ -4,6 +4,8 @@ from sources.eventbrite_client import EventbriteClient
 from sources.google_places_client import GooglePlacesClient
 from sources.ticketmaster_client import TicketmasterClient
 from sources.seatgeek_client import SeatGeekClient
+# Yelp Fusion: deferred — client exists at sources/yelp_client.py, re-enable at launch
+# from sources.yelp_client import YelpClient
 
 __all__ = [
     "EventSource",
@@ -12,4 +14,5 @@ __all__ = [
     "GooglePlacesClient",
     "TicketmasterClient",
     "SeatGeekClient",
+    # "YelpClient",  # deferred
 ]

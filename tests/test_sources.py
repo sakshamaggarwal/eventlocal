@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from models.user_profile import Event
 from sources.ticketmaster_client import TicketmasterClient
+from sources.yelp_client import YelpClient
 from sources.seatgeek_client import SeatGeekClient
 from sources.luma_client import LumaClient
 from sources.eventbrite_client import EventbriteClient
@@ -90,6 +91,104 @@ class TestTicketmasterClient:
                 mock_client_cls.return_value = mock_client
 
                 client = TicketmasterClient()
+                result = await client.fetch_events("bay-area", "2026-11-05")
+                assert result == []
+
+
+# ---- Yelp ----
+
+class TestYelpClient:
+    @pytest.mark.asyncio
+    async def test_skips_without_api_key(self):
+        with patch("sources.yelp_client.settings") as mock:
+            mock.yelp_api_key = ""
+            client = YelpClient()
+            result = await client.fetch_events("bay-area", "2026-11-05")
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_parses_response(self):
+        fake_response = {
+            "businesses": [
+                {
+                    "id": "yelp-1",
+                    "name": "Audio Nightclub",
+                    "url": "https://yelp.com/biz/audio",
+                    "rating": 4.5,
+                    "review_count": 320,
+                    "price": "$$",
+                    "categories": [{"alias": "danceclubs", "title": "Dance Clubs"}],
+                    "coordinates": {"latitude": 37.77, "longitude": -122.41},
+                    "location": {"display_address": ["316 11th St", "San Francisco, CA 94103"]},
+                    "image_url": "https://img.example.com/audio.jpg",
+                }
+            ]
+        }
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = fake_response
+
+        with patch("sources.yelp_client.settings") as mock_settings:
+            mock_settings.yelp_api_key = "test-key"
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.get.return_value = mock_resp
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=False)
+                mock_client_cls.return_value = mock_client
+
+                client = YelpClient()
+                events = await client.fetch_events("bay-area", "2026-11-05")
+
+        assert len(events) == 1
+        ev = events[0]
+        assert ev.title == "Audio Nightclub"
+        assert ev.source == "yelp"
+        assert ev.rsvp_count == 320
+        assert "danceclubs" in ev.tags
+
+    @pytest.mark.asyncio
+    async def test_fetch_reviews(self):
+        fake_response = {
+            "reviews": [
+                {"text": "Amazing vibe!", "rating": 5, "time_created": "2026-10-01"},
+                {"text": "Too loud", "rating": 2, "time_created": "2026-09-15"},
+            ]
+        }
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = fake_response
+
+        with patch("sources.yelp_client.settings") as mock_settings:
+            mock_settings.yelp_api_key = "test-key"
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.get.return_value = mock_resp
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=False)
+                mock_client_cls.return_value = mock_client
+
+                client = YelpClient()
+                reviews = await client.fetch_reviews("yelp-1")
+
+        assert len(reviews) == 2
+        assert reviews[0]["source"] == "yelp"
+        assert reviews[0]["rating"] == 5
+
+    @pytest.mark.asyncio
+    async def test_handles_api_error(self):
+        with patch("sources.yelp_client.settings") as mock_settings:
+            mock_settings.yelp_api_key = "test-key"
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.get.side_effect = Exception("Timeout")
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=False)
+                mock_client_cls.return_value = mock_client
+
+                client = YelpClient()
                 result = await client.fetch_events("bay-area", "2026-11-05")
                 assert result == []
 
@@ -209,11 +308,13 @@ class TestSourceInterface:
             EventbriteClient(),
             GooglePlacesClient(),
             TicketmasterClient(),
+            YelpClient(),
             SeatGeekClient(),
         ]
         names = {s.name for s in sources}
-        assert len(names) == 5
+        assert len(names) == 6
         assert "ticketmaster" in names
+        assert "yelp" in names
         assert "seatgeek" in names
 
     def test_source_names_unique(self):
@@ -222,6 +323,7 @@ class TestSourceInterface:
             EventbriteClient(),
             GooglePlacesClient(),
             TicketmasterClient(),
+            YelpClient(),
             SeatGeekClient(),
         ]
         names = [s.name for s in sources]
