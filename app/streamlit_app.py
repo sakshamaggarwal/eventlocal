@@ -15,8 +15,18 @@ except RuntimeError:
     asyncio.set_event_loop(loop)
 
 from agents.master_agent import discover_events
+from app import auth
 from app.config import settings
-from app.db import is_available as db_is_available, load_user_kb, save_user_kb
+from app.db import (
+    is_available as db_is_available,
+    load_profile,
+    load_user_kb,
+    save_event_for_user,
+    save_profile,
+    save_user_kb,
+    get_saved_events,
+    unsave_event_for_user,
+)
 from knowledge.cognee_engine import (
     export_all_kbs,
     get_user_kb,
@@ -229,6 +239,7 @@ def _system_status() -> str:
     from knowledge.cognee_engine import COGNEE_AVAILABLE
     tw = get_integration()
     db_ok = db_is_available()
+    logged_in = _is_logged_in()
 
     def _dot(ok: bool) -> str:
         return '<span class="status-dot dot-green"></span>' if ok else '<span class="status-dot dot-yellow"></span>'
@@ -240,6 +251,7 @@ def _system_status() -> str:
         f'<span>{_dot(COGNEE_AVAILABLE)} Cognee: {"Active" if COGNEE_AVAILABLE else "Fallback"}</span>'
         f'<span>{_dot(not tw.is_mock)} Triggers: {"Live" if not tw.is_mock else "Mock"}</span>'
         f'<span>{_dot(db_ok)} DB: {"Supabase" if db_ok else "In-Memory"}</span>'
+        f'<span>{_dot(logged_in)} Auth: {"Signed in" if logged_in else "Guest"}</span>'
         f'</div>'
     )
 
@@ -281,14 +293,71 @@ if "show_graph" not in st.session_state:
     st.session_state.show_graph = False
 if "user_kbs" not in st.session_state:
     st.session_state.user_kbs = {}
+if "auth_user" not in st.session_state:
+    st.session_state.auth_user = None
+if "auth_session" not in st.session_state:
+    st.session_state.auth_session = None
+if "auth_form" not in st.session_state:
+    st.session_state.auth_form = "sign_in"
+
+# Fallback user_id for anonymous usage
 if "user_id" not in st.session_state:
     import uuid
     st.session_state.user_id = str(uuid.uuid4())[:8]
 
-# Restore user KB: try Supabase first, fall back to session state
+# ---------------------------------------------------------------------------
+# OAuth callback handler (runs before any UI)
+# ---------------------------------------------------------------------------
+
+_query = st.query_params
+if "code" in _query and st.session_state.auth_user is None:
+    _code = _query["code"]
+    _result = auth.exchange_oauth_code(_code)
+    if "user" in _result and "session" in _result and _result["session"]:
+        st.session_state.auth_user = _result["user"]
+        st.session_state.auth_session = _result["session"]
+        st.session_state.user_id = _result["user"]["id"]
+    st.query_params.clear()
+    st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Auth helpers
+# ---------------------------------------------------------------------------
+
+def _get_auth_client():
+    """Return an authenticated Supabase client for the logged-in user, or None."""
+    sess = st.session_state.auth_session
+    if not sess:
+        return None
+    return auth.get_authenticated_client(
+        sess["access_token"], sess["refresh_token"]
+    )
+
+
+def _is_logged_in() -> bool:
+    return st.session_state.auth_user is not None
+
+
+# ---------------------------------------------------------------------------
+# Restore user data from Supabase
+# ---------------------------------------------------------------------------
+
 _uid = st.session_state.user_id
+_auth_client = _get_auth_client()
+
+# Load profile from DB for logged-in users
+if _is_logged_in() and "profile_loaded" not in st.session_state:
+    _db_profile = loop.run_until_complete(load_profile(_uid, client=_auth_client))
+    if _db_profile:
+        st.session_state["profile_age"] = _db_profile.get("age", 28)
+        st.session_state["profile_social"] = _db_profile.get("social_mode", "solo").title()
+        st.session_state["profile_city"] = _db_profile.get("city", "bay-area")
+    st.session_state.profile_loaded = True
+
+# Restore user KB
 if _uid not in st.session_state.get("user_kbs", {}):
-    _db_kb = loop.run_until_complete(load_user_kb(_uid))
+    _db_kb = loop.run_until_complete(load_user_kb(_uid, client=_auth_client))
     if _db_kb:
         st.session_state.user_kbs[_uid] = _db_kb
 
@@ -325,17 +394,106 @@ if _is_demo_mode():
 
 
 # ---------------------------------------------------------------------------
-# Sidebar — Profile controls
+# Sidebar — Auth + Profile controls
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
+    # --- Auth section ---
+    if _is_logged_in():
+        _user = st.session_state.auth_user
+        _display = _user.get("display_name") or _user.get("email", "")
+        st.markdown(
+            f'<div style="padding:0.5rem 0.8rem;background:#1a1d2e;border-radius:8px;'
+            f'margin-bottom:0.5rem;font-size:0.85rem;color:#e5e7eb;">'
+            f'Signed in as <strong>{_display}</strong></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Sign out", key="sign_out_btn"):
+            st.session_state.auth_user = None
+            st.session_state.auth_session = None
+            st.session_state.pop("profile_loaded", None)
+            st.session_state.pop("profile_age", None)
+            st.session_state.pop("profile_social", None)
+            st.session_state.pop("profile_city", None)
+            import uuid
+            st.session_state.user_id = str(uuid.uuid4())[:8]
+            st.rerun()
+        st.divider()
+    elif auth.is_configured():
+        st.markdown(
+            '<p style="font-size:0.85rem;color:#9ca3af;margin-bottom:0.3rem;">'
+            'Sign in to save your preferences and events across sessions.</p>',
+            unsafe_allow_html=True,
+        )
+
+        _tab_sign_in, _tab_sign_up = st.tabs(["Sign In", "Sign Up"])
+
+        with _tab_sign_in:
+            with st.form("sign_in_form", clear_on_submit=True):
+                _si_email = st.text_input("Email", key="si_email")
+                _si_pass = st.text_input("Password", type="password", key="si_pass")
+                _si_submit = st.form_submit_button("Sign in with email")
+            if _si_submit and _si_email and _si_pass:
+                _result = auth.sign_in_email(_si_email, _si_pass)
+                if "error" in _result:
+                    st.error(_result["error"])
+                else:
+                    st.session_state.auth_user = _result["user"]
+                    st.session_state.auth_session = _result["session"]
+                    st.session_state.user_id = _result["user"]["id"]
+                    st.session_state.pop("profile_loaded", None)
+                    st.rerun()
+
+        with _tab_sign_up:
+            with st.form("sign_up_form", clear_on_submit=True):
+                _su_email = st.text_input("Email", key="su_email")
+                _su_pass = st.text_input("Password (min 6 chars)", type="password", key="su_pass")
+                _su_submit = st.form_submit_button("Create account")
+            if _su_submit and _su_email and _su_pass:
+                if len(_su_pass) < 6:
+                    st.error("Password must be at least 6 characters.")
+                else:
+                    _result = auth.sign_up_email(_su_email, _su_pass)
+                    if "error" in _result:
+                        st.error(_result["error"])
+                    elif _result.get("session"):
+                        st.session_state.auth_user = _result["user"]
+                        st.session_state.auth_session = _result["session"]
+                        st.session_state.user_id = _result["user"]["id"]
+                        st.session_state.pop("profile_loaded", None)
+                        st.rerun()
+                    else:
+                        st.success("Check your email to confirm your account.")
+
+        # Google OAuth button
+        import urllib.parse
+        _app_url = st.context.headers.get(
+            "X-Forwarded-Proto", "https"
+        ) + "://" + st.context.headers.get("Host", "localhost:8501")
+        _google_url = auth.get_google_oauth_url(_app_url)
+        if _google_url:
+            st.link_button(
+                "Sign in with Google",
+                _google_url,
+                use_container_width=True,
+            )
+
+        st.divider()
+
+    # --- Profile controls ---
     st.header("Your Profile")
+
+    _default_age = st.session_state.get("profile_age", 28)
+    _default_social = st.session_state.get("profile_social", "Solo")
+    _default_city_key = st.session_state.get("profile_city", "bay-area")
+    _city_keys = list(SUPPORTED_CITIES.keys())
+    _default_city_idx = _city_keys.index(_default_city_key) if _default_city_key in _city_keys else 0
 
     age = st.slider(
         "Your Age",
         min_value=13,
         max_value=80,
-        value=28,
+        value=_default_age,
         help="We personalize events to your age bracket",
     )
 
@@ -353,9 +511,12 @@ with st.sidebar:
 
     st.divider()
 
+    _social_options = ["Solo", "Group", "Date"]
+    _social_idx = _social_options.index(_default_social) if _default_social in _social_options else 0
     social_mode = st.radio(
         "Going out...",
-        ["Solo", "Group", "Date"],
+        _social_options,
+        index=_social_idx,
         horizontal=True,
         help="Adjusts venue recommendations",
     )
@@ -364,12 +525,36 @@ with st.sidebar:
 
     city = st.selectbox(
         "City",
-        list(SUPPORTED_CITIES.keys()),
-        index=0,
+        _city_keys,
+        index=_default_city_idx,
         format_func=lambda c: SUPPORTED_CITIES[c],
     )
     date = st.date_input("Date")
     date_str = date.isoformat() if date else "today"
+
+    # Persist profile changes to Supabase for logged-in users
+    if _is_logged_in():
+        _profile_changed = (
+            age != st.session_state.get("profile_age")
+            or social_mode != st.session_state.get("profile_social")
+            or city != st.session_state.get("profile_city")
+        )
+        if _profile_changed:
+            st.session_state.profile_age = age
+            st.session_state.profile_social = social_mode
+            st.session_state.profile_city = city
+            _aclient = _get_auth_client()
+            loop.run_until_complete(save_profile(
+                st.session_state.user_id,
+                {
+                    "email": st.session_state.auth_user.get("email", ""),
+                    "display_name": st.session_state.auth_user.get("display_name", ""),
+                    "age": age,
+                    "social_mode": social_mode.lower(),
+                    "city": city,
+                },
+                client=_aclient,
+            ))
 
     st.divider()
     st.caption("Powered by Cognee + Qwen3-32B")
@@ -418,8 +603,9 @@ if st.button("🔍 Discover My Evening", type="primary", use_container_width=Tru
             st.session_state.scored_events = plan.events
             # Persist user KB to session state + Supabase
             st.session_state.user_kbs = export_all_kbs()
+            _kb_client = _get_auth_client()
             for _persist_uid, _persist_data in st.session_state.user_kbs.items():
-                loop.run_until_complete(save_user_kb(_persist_uid, _persist_data))
+                loop.run_until_complete(save_user_kb(_persist_uid, _persist_data, client=_kb_client))
         except Exception as exc:
             st.error(f"Something went wrong: {exc}")
 
@@ -578,6 +764,33 @@ else:
                     f'</div>',
                     unsafe_allow_html=True,
                 )
+                # Save/unsave button for logged-in users
+                if _is_logged_in():
+                    _ev_fp = f"{ev.title}|{ev.venue_name or ev.source}|{date_str}"
+                    _btn_key = f"save_{row_start}_{col_idx}"
+                    if st.button("🔖 Save event", key=_btn_key):
+                        _ev_dict = {
+                            "title": ev.title,
+                            "description": ev.description,
+                            "venue_name": ev.venue_name or "",
+                            "source": ev.source,
+                            "start_time": ev.start_time,
+                            "price": ev.price or "",
+                            "url": ev.url or "",
+                            "tags": list(ev.tags),
+                            "composite_score": ev.composite_score,
+                        }
+                        _aclient = _get_auth_client()
+                        loop.run_until_complete(
+                            save_event_for_user(
+                                st.session_state.user_id,
+                                _ev_dict,
+                                date=date_str,
+                                client=_aclient,
+                            )
+                        )
+                        st.toast(f"Saved: {ev.title}")
+
                 with st.expander("View details"):
                     if ev.description:
                         st.markdown(ev.description)
@@ -620,6 +833,48 @@ else:
             "Hit **Discover My Evening** above to generate a personalized itinerary."
         )
 
+
+# ---------------------------------------------------------------------------
+# Saved events section (logged-in users)
+# ---------------------------------------------------------------------------
+
+if _is_logged_in():
+    st.markdown("---")
+    st.markdown("### Your Saved Events")
+    _aclient_saved = _get_auth_client()
+    _saved = loop.run_until_complete(get_saved_events(st.session_state.user_id, client=_aclient_saved))
+    if _saved:
+        st.caption(f"{len(_saved)} saved events")
+        _saved_cols_per = 3
+        for _sr in range(0, len(_saved), _saved_cols_per):
+            _scols = st.columns(_saved_cols_per)
+            for _sci, _sev in enumerate(_saved[_sr : _sr + _saved_cols_per]):
+                with _scols[_sci]:
+                    _stitle = _sev.get("title", "Untitled")
+                    _svenue = _sev.get("venue_name", _sev.get("source", ""))
+                    _sprice = _sev.get("price", "")
+                    _stime = _sev.get("start_time", "")
+                    st.markdown(
+                        f'<div class="event-card">'
+                        f'<div class="event-title">{_stitle}</div>'
+                        f'<div class="event-venue">🔖 {_svenue}</div>'
+                        f'<div class="event-meta">'
+                        f'<span>{_sprice or "Price TBD"}</span>'
+                        f'<span>{_stime[11:16] if len(_stime) > 11 else ""}</span>'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if st.button("Remove", key=f"unsave_{_sr}_{_sci}"):
+                        loop.run_until_complete(
+                            unsave_event_for_user(
+                                st.session_state.user_id,
+                                _sev["_fingerprint"],
+                                client=_aclient_saved,
+                            )
+                        )
+                        st.rerun()
+    else:
+        st.caption("No saved events yet. Browse events above and click Save to bookmark them.")
 
 # ---------------------------------------------------------------------------
 # Saved plans section
