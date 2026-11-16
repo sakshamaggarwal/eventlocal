@@ -21,7 +21,6 @@ async def validate_secrets() -> dict[str, bool]:
         or settings.eventbrite_api_key
         or settings.google_places_api_key
         or settings.ticketmaster_api_key
-        or settings.yelp_api_key
         or settings.seatgeek_client_id
     )
     checks["supabase"] = bool(settings.supabase_url and settings.supabase_key)
@@ -31,7 +30,6 @@ async def validate_secrets() -> dict[str, bool]:
         "eventbrite": bool(settings.eventbrite_api_key),
         "google_places": bool(settings.google_places_api_key),
         "ticketmaster": bool(settings.ticketmaster_api_key),
-        "yelp": bool(settings.yelp_api_key),
         "seatgeek": bool(settings.seatgeek_client_id),
     }
 
