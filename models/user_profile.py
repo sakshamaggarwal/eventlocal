@@ -37,7 +37,7 @@ class UserProfile(BaseModel):
     """User profile for personalization — MVP has age only."""
 
     # --- MVP (Hackathon) ---
-    age: int = Field(ge=13, le=100, description="User's age")
+    age: int = Field(ge=15, le=100, description="User's age")
 
     # --- MVP social mode toggle ---
     social_mode: str = "solo"  # "solo", "group", or "date"

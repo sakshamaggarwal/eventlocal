@@ -333,14 +333,14 @@ with st.sidebar:
 
     age = st.slider(
         "Your Age",
-        min_value=13,
+        min_value=15,
         max_value=80,
         value=28,
-        help="We personalize events to your age bracket",
+        help="We personalize events to your age bracket (minimum age 15)",
     )
 
     bracket_labels = {
-        range(0, 21): "🎮 Under 21 — All-ages events, gaming, cafes",
+        range(15, 21): "🎮 Under 21 — All-ages events, gaming, cafes",
         range(21, 30): "🍸 Twenties — Nightlife, rooftops, meetups",
         range(30, 40): "🍷 Thirties — Cocktail bars, live music, comedy",
         range(40, 50): "🎭 Forties — Jazz, theater, wine, fine dining",
@@ -377,6 +377,21 @@ with st.sidebar:
 
     if st.button("🧠 Knowledge Graph View"):
         st.session_state.show_graph = not st.session_state.show_graph
+
+    st.divider()
+    with st.expander("📜 Privacy & Terms"):
+        st.markdown(
+            "**Minimum age:** 15 years old.\n\n"
+            "**Data we collect:** age bracket, social mode preference, "
+            "saved event plans, and search queries.\n\n"
+            "**Storage:** your data is stored in Supabase (or in-session memory "
+            "when Supabase is unavailable).\n\n"
+            "**We do not** sell, share, or disclose your personal data to third "
+            "parties.\n\n"
+            "By using eventlocal you agree to our "
+            "[Terms of Service](#terms-of-service) and "
+            "[Privacy Policy](#privacy-policy) below."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -714,6 +729,86 @@ st.markdown(
     '</table>',
     unsafe_allow_html=True,
 )
+
+
+# ---------------------------------------------------------------------------
+# Privacy Policy & Terms of Service
+# ---------------------------------------------------------------------------
+
+st.markdown("---")
+
+with st.expander("Privacy Policy", expanded=False):
+    st.markdown("""
+<a id="privacy-policy"></a>
+
+**eventlocal Privacy Policy**
+
+*Last updated: November 2026*
+
+**What we collect**
+
+- **Age bracket** — used solely to personalize event recommendations.
+- **Social mode preference** (solo / group / date) — used to tailor venue suggestions.
+- **Saved event plans** — stored so you can revisit them.
+- **Search queries** — used to improve your recommendations over time.
+
+**How we store it**
+
+Your data is stored in Supabase, a secure hosted database. When Supabase is
+unavailable, data is held in your browser session only and is not persisted.
+
+**What we do NOT do**
+
+- We do **not** sell your data to third parties.
+- We do **not** share your data with advertisers.
+- We do **not** use your data for purposes other than improving your
+  eventlocal experience.
+
+**Minimum age**
+
+You must be at least **15 years old** to use eventlocal.
+
+**Data deletion**
+
+To request deletion of your data, contact us at the email listed on our
+GitHub repository.
+""")
+
+with st.expander("Terms of Service", expanded=False):
+    st.markdown("""
+<a id="terms-of-service"></a>
+
+**eventlocal Terms of Service**
+
+*Last updated: November 2026*
+
+By using eventlocal, you agree to the following terms:
+
+1. **Eligibility** — You must be at least **15 years old** to use this
+   service.
+
+2. **Purpose** — eventlocal is an AI-powered event discovery tool. Event
+   listings are aggregated from third-party sources (Luma, Eventbrite,
+   Google Places, Ticketmaster, Yelp, SeatGeek) and may not always be
+   accurate or up to date.
+
+3. **No guarantees** — We provide recommendations on a best-effort basis.
+   Event availability, pricing, and details are controlled by the
+   respective event organizers and platforms.
+
+4. **User data** — See our Privacy Policy above. We collect minimal data
+   and do not sell it.
+
+5. **Acceptable use** — You agree not to misuse the service, attempt to
+   scrape data, or use it for any unlawful purpose.
+
+6. **Limitation of liability** — eventlocal is provided "as is" without
+   warranty. We are not liable for any damages arising from your use of
+   the service.
+
+7. **Changes** — We may update these terms at any time. Continued use
+   constitutes acceptance.
+""")
 
 
 # ---------------------------------------------------------------------------
