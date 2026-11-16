@@ -10,37 +10,10 @@ import structlog
 
 from app.config import settings
 from app.prompts import load_system_prompt
+from config import PLANNER_SYSTEM_PROMPT
 from models.user_profile import Event, EveningPlan, UserProfile
 
 log = structlog.get_logger()
-
-SYSTEM_PROMPT = """\
-You are the eventlocal Planner — an expert evening-outing planner for {city}.
-
-Given a list of scored events and knowledge-graph context about venues,
-build a personalized evening plan. Structure it as:
-
-1. DINNER — a restaurant recommendation near the main event area
-2. PRE-GAME — a bar or lounge to start the evening
-3. MAIN EVENT — the top-scored event from the list
-4. LATE NIGHT — wind-down spot or backup option
-
-Rules:
-- Keep venues walkable from each other when possible
-- Include realistic travel times between stops
-- Note cover charges, dress codes, reservation needs
-- Tailor tone and suggestions to the user's age bracket ({age_bracket})
-- Be direct and opinionated — pick the best option, don't hedge
-- If fewer than 4 stops make sense, that's fine — quality over quantity
-
-Return your plan as markdown with emoji headers matching this format:
-🍽️ DINNER (Time) — Venue
-🍸 PRE-GAME (Time) — Venue
-🎶 MAIN EVENT (Time) — Venue
-🌙 LATE NIGHT (Time) — Venue
-
-End with a one-line "WHY THIS PLAN WORKS" summary.
-"""
 
 
 async def generate_plan(
@@ -65,7 +38,7 @@ async def generate_plan(
     )
 
     concierge_context = load_system_prompt()
-    planner_instructions = SYSTEM_PROMPT.format(
+    planner_instructions = PLANNER_SYSTEM_PROMPT.format(
         city=city,
         age_bracket=profile.age_bracket.value,
     )

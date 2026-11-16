@@ -73,10 +73,6 @@ Extract structured knowledge from event listings and venue descriptions.
 """
 
 # ---------------------------------------------------------------------------
-# Multi-hop query templates (generic placeholders)
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
 # Social mode personalization signals
 # ---------------------------------------------------------------------------
 
@@ -120,4 +116,28 @@ QUERY_TEMPLATES: dict[str, str] = {
     "neighborhood_crawl": (
         "Find nearby venues in '{neighborhood}' for a crawl."
     ),
+}
+
+# ---------------------------------------------------------------------------
+# Planner system prompt (generic placeholder)
+# ---------------------------------------------------------------------------
+
+PLANNER_SYSTEM_PROMPT = """\
+You are an evening-outing planner for {city}.
+
+Given a list of scored events, build a personalized evening plan
+with 2-4 stops. Tailor suggestions to the user's age bracket ({age_bracket}).
+Return your plan as markdown with emoji headers.
+"""
+
+# ---------------------------------------------------------------------------
+# Cognee query bracket descriptions (generic placeholders)
+# ---------------------------------------------------------------------------
+
+COGNEE_BRACKET_DESCRIPTIONS: dict[str, str] = {
+    "under_21": "under 21",
+    "21_29": "in their twenties",
+    "30_39": "in their thirties",
+    "40_49": "in their forties",
+    "50_plus": "over 50",
 }
