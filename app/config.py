@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     triggerware_url: str = Field(default="", alias="TRIGGERWARE_URL")
     triggerware_api_key: str = Field(default="", alias="TRIGGERWARE_API_KEY")
 
+    # --- Affiliate / Referral ---
+    ticketmaster_affiliate_id: str = Field(default="", alias="TICKETMASTER_AFFILIATE_ID")
+    seatgeek_partner_id: str = Field(default="", alias="SEATGEEK_PARTNER_ID")
+    eventbrite_affiliate_id: str = Field(default="", alias="EVENTBRITE_AFFILIATE_ID")
+
     # --- App ---
     app_env: str = "development"
     app_port: int = 8000

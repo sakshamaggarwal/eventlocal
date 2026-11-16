@@ -25,6 +25,7 @@ from knowledge.cognee_engine import (
 from models.user_profile import UserProfile
 from sources.sample_data import get_sample_events
 from triggers import get_integration
+from utils.affiliate import get_affiliate_url, has_affiliate
 
 # ---------------------------------------------------------------------------
 # Page config & custom CSS
@@ -593,7 +594,9 @@ else:
                     if ev.start_time:
                         detail_parts.append(f"**Time:** {ev.start_time}")
                     if ev.url:
-                        detail_parts.append(f"**Link:** [Event page]({ev.url})")
+                        ticket_url = get_affiliate_url(ev.url, ev.source)
+                        label = "🎟️ Get Tickets" if has_affiliate(ev.source) else "Event page"
+                        detail_parts.append(f"**Link:** [{label}]({ticket_url})")
                     if ev.tags:
                         detail_parts.append("**Tags:** " + " ".join(f"`{t}`" for t in ev.tags))
                     if detail_parts:
