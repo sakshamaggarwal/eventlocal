@@ -22,6 +22,15 @@ class TestValidateFreeModel:
         with pytest.raises(ValueError, match="not a free model"):
             _validate_free_model("qwen/qwen3-32b")
 
+    def test_rejects_paid_model_with_free_suffix(self):
+        """Edge case: paid model with :free appended should be blocked by allowlist."""
+        with pytest.raises(ValueError, match="not in the known free models allowlist"):
+            _validate_free_model("anthropic/claude-3-sonnet:free")
+
+    def test_rejects_unknown_free_suffixed_model(self):
+        with pytest.raises(ValueError, match="not in the known free models allowlist"):
+            _validate_free_model("openai/gpt-4o:free")
+
 
 def _mock_completion(content: str = "test response"):
     """Build a mock chat completion response."""
