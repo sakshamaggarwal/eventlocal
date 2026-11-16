@@ -16,6 +16,7 @@ async def validate_secrets() -> dict[str, bool]:
     checks: dict[str, bool] = {}
 
     checks["groq_api_key"] = bool(settings.groq_api_key)
+    checks["openrouter_api_key"] = bool(settings.openrouter_api_key)
     checks["any_event_source"] = bool(
         settings.luma_api_key
         or settings.eventbrite_api_key
@@ -52,7 +53,10 @@ async def validate_secrets() -> dict[str, bool]:
         checks["supabase_connected"] = False
 
     if not checks["groq_api_key"]:
-        log.warning("startup.no_groq_key", msg="GROQ_API_KEY not set — LLM features disabled")
+        if checks["openrouter_api_key"]:
+            log.info("startup.openrouter_failover", msg="GROQ_API_KEY not set — OpenRouter will be used as primary")
+        else:
+            log.warning("startup.no_llm_key", msg="Neither GROQ_API_KEY nor OPENROUTER_API_KEY set — LLM features disabled")
 
     if not checks["any_event_source"]:
         log.warning("startup.no_event_sources", msg="No event source API keys — only demo mode available")
