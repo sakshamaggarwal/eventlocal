@@ -7,6 +7,11 @@ from unittest.mock import patch, MagicMock
 from app.db import (
     _event_fingerprint,
     deduplicate_events,
+    save_profile,
+    load_profile,
+    save_event_for_user,
+    unsave_event_for_user,
+    get_saved_events,
     SCHEMA_SQL,
 )
 from models.user_profile import Event
@@ -83,10 +88,24 @@ class TestSchemaSQL:
     def test_schema_has_tables(self):
         assert "user_kbs" in SCHEMA_SQL
         assert "event_cache" in SCHEMA_SQL
+        assert "profiles" in SCHEMA_SQL
+        assert "saved_events" in SCHEMA_SQL
 
     def test_schema_has_indexes(self):
         assert "idx_event_cache_city_date" in SCHEMA_SQL
         assert "idx_event_cache_fetched" in SCHEMA_SQL
+        assert "idx_saved_events_user" in SCHEMA_SQL
+
+    def test_schema_has_rls(self):
+        assert "ROW LEVEL SECURITY" in SCHEMA_SQL
+        assert "profiles_select_own" in SCHEMA_SQL
+        assert "saved_events_all_own" in SCHEMA_SQL
+        assert "user_kbs_all_own" in SCHEMA_SQL
+        assert "event_cache_select_all" in SCHEMA_SQL
+
+    def test_schema_has_trigger(self):
+        assert "handle_new_user" in SCHEMA_SQL
+        assert "on_auth_user_created" in SCHEMA_SQL
 
 
 class TestDbNoOp:
@@ -129,3 +148,33 @@ class TestDbNoOp:
             from app.db import get_cached_events
             result = await get_cached_events("bay-area", "2026-11-05")
             assert result is None
+
+    @pytest.mark.asyncio
+    async def test_save_profile_noop(self):
+        with patch("app.db._get_client", return_value=None):
+            result = await save_profile("user-1", {"age": 25})
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_load_profile_noop(self):
+        with patch("app.db._get_client", return_value=None):
+            result = await load_profile("user-1")
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_save_event_for_user_noop(self):
+        with patch("app.db._get_client", return_value=None):
+            result = await save_event_for_user("user-1", {"title": "Test"})
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_unsave_event_for_user_noop(self):
+        with patch("app.db._get_client", return_value=None):
+            result = await unsave_event_for_user("user-1", "fp-123")
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_get_saved_events_noop(self):
+        with patch("app.db._get_client", return_value=None):
+            result = await get_saved_events("user-1")
+            assert result == []
