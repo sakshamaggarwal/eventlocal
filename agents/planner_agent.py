@@ -52,8 +52,8 @@ async def generate_plan(
 ) -> EveningPlan:
     """Generate an evening plan — live LLM when available, template fallback."""
 
-    if not settings.groq_api_key:
-        log.info("planner.template_fallback", reason="No GROQ_API_KEY set")
+    if not settings.groq_api_key and not settings.openrouter_api_key:
+        log.info("planner.template_fallback", reason="No LLM API key set")
         return _template_plan(events, profile, city, date)
 
     from app.llm import chat

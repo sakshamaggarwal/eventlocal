@@ -213,11 +213,11 @@ def _score_class(score: float) -> str:
 
 
 def _is_demo_mode() -> bool:
-    return not bool(settings.groq_api_key)
+    return not bool(settings.groq_api_key or settings.openrouter_api_key)
 
 
 def _system_status() -> str:
-    llm_ok = bool(settings.groq_api_key)
+    llm_ok = bool(settings.groq_api_key or settings.openrouter_api_key)
     luma_ok = bool(settings.luma_api_key)
     eb_ok = bool(settings.eventbrite_api_key)
     gp_ok = bool(settings.google_places_api_key)
@@ -234,7 +234,7 @@ def _system_status() -> str:
 
     return (
         f'<div class="status-bar">'
-        f'<span>{_dot(llm_ok)} LLM (Qwen3-32B): {"Live" if llm_ok else "Demo"}</span>'
+        f'<span>{_dot(llm_ok)} LLM: {"Groq" if settings.groq_api_key else "OpenRouter" if settings.openrouter_api_key else "Demo"}</span>'
         f'<span>{_dot(sources_live > 0)} Sources: {sources_live}/6 connected</span>'
         f'<span>{_dot(COGNEE_AVAILABLE)} Cognee: {"Active" if COGNEE_AVAILABLE else "Fallback"}</span>'
         f'<span>{_dot(not tw.is_mock)} Triggers: {"Live" if not tw.is_mock else "Mock"}</span>'

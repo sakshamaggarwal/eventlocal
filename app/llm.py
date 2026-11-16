@@ -1,7 +1,8 @@
 """
-LLM client — Qwen3-32B via Groq (OpenAI-compatible).
+LLM client — Groq primary, OpenRouter failover (both OpenAI-compatible).
 
-Includes rate limiting (Groq free tier: 30 req/min) and latency guards.
+Groq: Qwen3-32B, free tier (30 req/min).
+OpenRouter: free-tier model only (enforced by pinned :free model ID).
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ LLM_TIMEOUT = 30
 LLM_MAX_RETRIES = 2
 
 
-def get_llm_client() -> AsyncOpenAI:
+def _get_groq_client() -> AsyncOpenAI:
     """Return an async OpenAI client pointed at Groq."""
     return AsyncOpenAI(
         api_key=settings.groq_api_key,
@@ -29,30 +30,104 @@ def get_llm_client() -> AsyncOpenAI:
     )
 
 
+def _get_openrouter_client() -> AsyncOpenAI:
+    """Return an async OpenAI client pointed at OpenRouter."""
+    return AsyncOpenAI(
+        api_key=settings.openrouter_api_key,
+        base_url=settings.openrouter_base_url,
+        timeout=LLM_TIMEOUT,
+        max_retries=LLM_MAX_RETRIES,
+    )
+
+
+def _validate_free_model(model_id: str) -> str:
+    """Guard: only allow free OpenRouter models (must end with :free)."""
+    if not model_id.endswith(":free"):
+        raise ValueError(
+            f"OpenRouter model '{model_id}' is not a free model. "
+            "Only models ending with ':free' are allowed in this project."
+        )
+    return model_id
+
+
+# Keep the old name for any callers that import it directly
+def get_llm_client() -> AsyncOpenAI:
+    """Return the primary (Groq) LLM client."""
+    return _get_groq_client()
+
+
 async def chat(
     messages: list[dict],
     *,
     temperature: float | None = None,
     max_tokens: int | None = None,
 ) -> str:
-    """Send a chat completion with rate limiting and latency tracking."""
+    """Send a chat completion — Groq first, OpenRouter failover on error."""
     limiter = get_limiter("llm")
     await limiter.acquire()
 
-    client = get_llm_client()
+    temperature = temperature or settings.llm_temperature
+    max_tokens = max_tokens or settings.llm_max_tokens
+
+    # --- Try Groq (primary) ---
+    if settings.groq_api_key:
+        try:
+            return await _call_provider(
+                client=_get_groq_client(),
+                model=settings.llm_model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                provider="groq",
+            )
+        except Exception as groq_exc:
+            log.warning(
+                "llm.groq_failed",
+                error=str(groq_exc),
+                msg="Falling back to OpenRouter",
+            )
+            if not settings.openrouter_api_key:
+                raise
+
+    # --- Failover: OpenRouter (free model only) ---
+    if settings.openrouter_api_key:
+        free_model = _validate_free_model(settings.openrouter_model)
+        return await _call_provider(
+            client=_get_openrouter_client(),
+            model=free_model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            provider="openrouter",
+        )
+
+    raise RuntimeError("No LLM provider configured (need GROQ_API_KEY or OPENROUTER_API_KEY)")
+
+
+async def _call_provider(
+    *,
+    client: AsyncOpenAI,
+    model: str,
+    messages: list[dict],
+    temperature: float,
+    max_tokens: int,
+    provider: str,
+) -> str:
+    """Call a single LLM provider and log the result."""
     start = time.monotonic()
     try:
         resp = await client.chat.completions.create(
-            model=settings.llm_model,
+            model=model,
             messages=messages,
-            temperature=temperature or settings.llm_temperature,
-            max_tokens=max_tokens or settings.llm_max_tokens,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
         elapsed = time.monotonic() - start
         usage = resp.usage
         log.info(
             "llm.completion",
-            model=settings.llm_model,
+            provider=provider,
+            model=model,
             latency=round(elapsed, 2),
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
@@ -60,5 +135,11 @@ async def chat(
         return resp.choices[0].message.content or ""
     except Exception as exc:
         elapsed = time.monotonic() - start
-        log.error("llm.error", error=str(exc), latency=round(elapsed, 2))
+        log.error(
+            "llm.error",
+            provider=provider,
+            model=model,
+            error=str(exc),
+            latency=round(elapsed, 2),
+        )
         raise
